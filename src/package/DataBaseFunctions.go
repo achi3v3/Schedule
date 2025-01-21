@@ -13,8 +13,8 @@ func FunctionDataBaseFunctions() {
 
 func FunctionDataBaseTableData(dbName, group, day string) [][]string {
 
-	dbName = renameSheetGroup(dbName)
-	tbName := renameSheetGroup(group)
+	dbName = (dbName)
+	tbName := (group)
 	connStr := "user=postgres password=password sslmode=disable"
 
 	// Открытие соединения с PostgreSQL сервером
@@ -77,7 +77,7 @@ func FunctionDataBaseNames() []string {
 
 	return RequestCourses(db)
 } // Базы Данных
-func ReloadFile(fileName string) {
+func ReloadFile(fileName string, week string) {
 	connStr := "user=postgres password=password sslmode=disable"
 
 	db, err := sql.Open("postgres", connStr)
@@ -99,8 +99,9 @@ func ReloadFile(fileName string) {
 	}
 	createFilesTable(db)
 	deleteAllFromTable(db, "files")
-	insertFileData(db, fileName, 20)
-	deleteAllSchedule(db)
+
+	insertFileData(db, fileName, week)
+	deleteAllSchedule()
 	FunctionDbWriter()
 
 }
@@ -120,7 +121,7 @@ func createFilesTable(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS files (
 		id SERIAL PRIMARY KEY,
 		file_name VARCHAR(255) NOT NULL,
-		week_number INT
+		week_number TEXT
 	);
 	`
 
@@ -132,7 +133,7 @@ func createFilesTable(db *sql.DB) error {
 	fmt.Println("Таблица 'files' успешно создана")
 	return nil
 }
-func insertFileData(db *sql.DB, fileName string, weekNumber int) error {
+func insertFileData(db *sql.DB, fileName string, weekNumber string) error {
 	insertQuery := `
 		INSERT INTO files (file_name, week_number)
 		VALUES ($1, $2);
@@ -186,13 +187,20 @@ func getExcelName() ([]string, error) {
 
 	return dataFiles, nil
 }
-func deleteAllSchedule(db *sql.DB) {
+func deleteAllSchedule() {
 	allDataBases := FunctionDataBaseNames()
 	for _, database := range allDataBases {
+		connStr := fmt.Sprintf("user=postgres password=password dbname=%s sslmode=disable", database)
+		db, err := sql.Open("postgres", connStr)
+		if err != nil {
+			log.Printf("Ошибка при подключении к базе данных: %s", err)
+		}
+		defer db.Close()
 		allTables := FunctionTableNames(database)
 		for _, table := range allTables {
 			if table != "users" && table != "files" {
 				deleteAllFromTable(db, table)
+				fmt.Printf("Все данные из таблицы %s удалены\n", table)
 			}
 		}
 	}
