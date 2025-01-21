@@ -81,6 +81,23 @@ func removeSpaces(input string) string {
 func removeDots(input string) string {
 	return strings.ReplaceAll(input, ".", "")
 }
+func removeDuplicatesLists(input []string) []string {
+	// Создаем map для отслеживания уникальных элементов
+	seen := make(map[string]bool)
+	var result []string
+
+	// Проходим по всем элементам входного списка
+	for _, item := range input {
+		// Если элемент еще не добавлен в map, добавляем его
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+
+	// Возвращаем новый срез с уникальными элементами
+	return result
+}
 
 // ================================================GET FUNCS==============================================================================
 func get_days_for_couple() []string {
