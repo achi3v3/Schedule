@@ -6,14 +6,16 @@ import (
 	"strings"
 )
 
-func FunctionTextHandlers(s string) string {
+func FunctionTextHandlers() {
 	fmt.Println("func Text Handlers")
-	return parseTeacher(s)
+
 }
 
 // ===========================================MAIN==============================================================
+
 func parseClassInfo(input string) ClassInfo {
 	input = strings.TrimSpace(input)
+	// inputWithoutBugs :=
 
 	auditory := parseAuditory(input)
 	weeks := parseWeeks(input)
@@ -97,8 +99,9 @@ func parseAuditory(input string) string {
 		}
 	}
 	if removeSpaces(matches) == "" {
-		if strings.Contains(strings.ToUpper(input), "ДИСТАНТ") || strings.Contains(strings.ToUpper(input), "ДИСТАН") {
-			matches = "(ДИСТАНТ)"
+		if strings.Contains(strings.ToUpper(input), "ДИСТАНТ") {
+			re := regexp.MustCompile(`\(?ДИСТАНТ\)?`)
+			matches = re.FindString(input)
 		}
 	}
 	return strings.TrimSpace(matches)
@@ -106,28 +109,64 @@ func parseAuditory(input string) string {
 
 // ===========================================TEACHER==============================================================
 func parseTeacher(input string) string {
-	teacherRe := regexp.MustCompile(`(доц\.|проф\.|ст\.преп\.|асс\.|преп\.)\s+[A-Za-zА-Яа-яёЁ]+\s+[A-ZА-Я]\.[A-ZА-Я]\.`)
+	input = strings.Replace(input, ". Практикум", " Практикум", -1)
+	input = strings.Replace(input, parseAuditory(input), "", -1)
+	input = strings.Replace(input, parseWeeks(input), "", -1)
+
+	teacherRe := regexp.MustCompile(`(доц\.|проф\.|ст\.преп\.|асс\.|преп\.)\s+[A-Za-zА-Яа-яёЁ\.]+\s+[A-Za-zА-Яа-яёЁ\.]+`)
 
 	matches := teacherRe.FindString(input)
-	if matches != "" {
-		return strings.TrimSpace(matches)
+
+	if removeSpaces(matches) == "" {
+		titles := []string{"доц.", "проф.", "ст. преп.", "ст. преп", "асс.", "преп."}
+
+		for _, title := range titles {
+			if strings.Contains(input, title) {
+				titleIndex := strings.Index(input, title)
+				substr := input[titleIndex+len(title):]
+
+				teacherReAlt := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ\.]+\s+[A-Za-zА-Яа-яёЁ\.]+`)
+
+				matches = teacherReAlt.FindString(substr)
+
+				if matches != "" {
+					return strings.TrimSpace(title + " " + matches)
+				}
+			}
+		}
+	}
+	if removeSpaces(matches) == "" {
+		familyNameRe := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ]+(\s*[A-Za-zА-Яа-яёЁ]\.\s*)+`)
+		matches = familyNameRe.FindString(input)
+
+		if matches != "" {
+			return strings.TrimSpace(matches)
+		}
+	}
+	if removeSpaces(matches) == "" {
+		teacherRe := regexp.MustCompile(`(доц\.|проф\.|ст\.преп\.|асс\.|преп\.)\s+[A-Za-zА-Яа-яёЁ]+\s+[A-ZА-Я]\.[A-ZА-Я]\.`)
+
+		matches := teacherRe.FindString(input)
+		if matches != "" {
+			return strings.TrimSpace(matches)
+		}
+
+		initialsAndNameRe := regexp.MustCompile(`([A-Za-zА-Яа-яёЁ]+)\s([A-ZА-Я]\.[A-ZА-Я]\.)`)
+
+		matches = initialsAndNameRe.FindString(input)
+		if matches != "" {
+			return strings.TrimSpace(matches)
+		}
+
+		familyNameRe := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ]+(\s+[A-ZА-Я]\.)+`)
+
+		matches = familyNameRe.FindString(input)
+		if matches != "" {
+			return strings.TrimSpace(matches)
+		}
 	}
 
-	initialsAndNameRe := regexp.MustCompile(`([A-Za-zА-Яа-яёЁ]+)\s([A-ZА-Я]\.[A-ZА-Я]\.)`)
-
-	matches = initialsAndNameRe.FindString(input)
-	if matches != "" {
-		return strings.TrimSpace(matches)
-	}
-
-	familyNameRe := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ]+(\s+[A-ZА-Я]\.)+`)
-
-	matches = familyNameRe.FindString(input)
-	if matches != "" {
-		return strings.TrimSpace(matches)
-	}
-
-	return ""
+	return strings.TrimSpace(matches)
 }
 
 // ===========================================WEEKS==============================================================
@@ -187,37 +226,28 @@ type ClassInfo struct {
 }
 
 // ===========================================BUCKET==============================================================
+
 // func parseTeacher(input string) string {
-// 	teacherRe := regexp.MustCompile(`(доц\.|проф\.|ст\.преп\.|асс\.|преп\.)\s+[A-Za-zА-Яа-яёЁ\.]+\s+[A-Za-zА-Яа-яёЁ\.]+`)
+// 	teacherRe := regexp.MustCompile(`(доц\.|проф\.|ст\.преп\.|асс\.|преп\.)\s+[A-Za-zА-Яа-яёЁ]+\s+[A-ZА-Я]\.[A-ZА-Я]\.`)
 
 // 	matches := teacherRe.FindString(input)
-
-// 	if removeSpaces(matches) == "" {
-// 		titles := []string{"доц.", "проф.", "ст. преп.", "ст. преп", "асс.", "преп."}
-
-// 		for _, title := range titles {
-// 			if strings.Contains(input, title) {
-// 				titleIndex := strings.Index(input, title)
-// 				substr := input[titleIndex+len(title):]
-
-// 				teacherReAlt := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ\.]+\s+[A-Za-zА-Яа-яёЁ\.]+`)
-
-// 				matches = teacherReAlt.FindString(substr)
-
-// 				if matches != "" {
-// 					return strings.TrimSpace(title + " " + matches)
-// 				}
-// 			}
-// 		}
-// 	}
-// 	if removeSpaces(matches) == "" {
-// 		familyNameRe := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ]+(\s*[A-Za-zА-Яа-яёЁ]\.\s*)+`)
-// 		matches = familyNameRe.FindString(input)
-
-// 		if matches != "" {
-// 			return strings.TrimSpace(matches)
-// 		}
+// 	if matches != "" {
+// 		return strings.TrimSpace(matches)
 // 	}
 
-//		return strings.TrimSpace(matches)
-//	}
+// 	initialsAndNameRe := regexp.MustCompile(`([A-Za-zА-Яа-яёЁ]+)\s([A-ZА-Я]\.[A-ZА-Я]\.)`)
+
+// 	matches = initialsAndNameRe.FindString(input)
+// 	if matches != "" {
+// 		return strings.TrimSpace(matches)
+// 	}
+
+// 	familyNameRe := regexp.MustCompile(`[A-Za-zА-Яа-яёЁ]+(\s+[A-ZА-Я]\.)+`)
+
+// 	matches = familyNameRe.FindString(input)
+// 	if matches != "" {
+// 		return strings.TrimSpace(matches)
+// 	}
+
+// 	return ""
+// }

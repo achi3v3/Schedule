@@ -188,7 +188,7 @@ func createTableUsers(db *sql.DB) {
 	if err != nil {
 		log.Printf("Ошибка при создании таблицы: %s", err)
 	}
-	fmt.Println("BD OKAY")
+	fmt.Println("USERS OKAY")
 }
 func addUser(db *sql.DB, userID int, username, firstName string) bool {
 	var exists bool
@@ -225,7 +225,7 @@ func createTableSheets(db *sql.DB) {
 	if err != nil {
 		log.Printf("Ошибка при создании таблицы: %s", err)
 	}
-	fmt.Println("BD OKAY")
+	fmt.Println("TABLESHEETS OKAY")
 }
 func addSheets(db *sql.DB, sheet string) error {
 	var exists bool
@@ -288,13 +288,15 @@ func createTableGroups(db *sql.DB) {
 	CREATE TABLE IF NOT EXISTS groups (
 		id SERIAL PRIMARY KEY,
 		sheet TEXT NOT NULL,
-		namegroup TEXT NOT NULL UNIQUE
+		sheetRu TEXT NOT NULL,
+		namegroup TEXT NOT NULL UNIQUE,
+		namegroupRu TEXT NOT NULL UNIQUE
 	);`
 	_, err := db.Exec(query)
 	if err != nil {
 		log.Printf("Ошибка при создании таблицы: %s", err)
 	}
-	fmt.Println("BD OKAY")
+	fmt.Println("TABLEGROUPS OKAY")
 }
 func addGroups(db *sql.DB, sheet, group string) error {
 	var exists bool
@@ -308,10 +310,10 @@ func addGroups(db *sql.DB, sheet, group string) error {
 		return nil
 	}
 	queryInsert := `
-		INSERT INTO groups (sheet, namegroup)
-		VALUES ($1, $2)
+		INSERT INTO groups (sheet, sheetRu, namegroup, namegroupRu)
+		VALUES ($1, $2, $3, $4)
 	`
-	_, err = db.Exec(queryInsert, sheet, group)
+	_, err = db.Exec(queryInsert, renameSheetGroup(sheet), sheet, renameSheetGroup(group), group)
 	if err != nil {
 		return fmt.Errorf("ошибка при добавлении namegroup: %v", err)
 	}
@@ -329,7 +331,37 @@ func getGroupsByCourse(courseName string) ([]string, error) {
 
 	var groups []string
 
-	rows, err := db.Query("SELECT namegroup FROM groups WHERE course = $1", courseName)
+	rows, err := db.Query("SELECT namegroup FROM groups WHERE sheet = $1", renameSheetGroup(courseName))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при извлечении групп для курса '%s': %v", courseName, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var group string
+		if err := rows.Scan(&group); err != nil {
+			return nil, fmt.Errorf("ошибка при сканировании данных: %v", err)
+		}
+		groups = append(groups, group)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при обработке результата запроса: %v", err)
+	}
+
+	return groups, nil
+}
+func getGroupsByCourseRu(courseName string) ([]string, error) {
+	connStr := "user=postgres password=password sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Printf("Ошибка при подключении к баз %sе данных: ", err)
+	}
+	defer db.Close()
+
+	var groups []string
+
+	rows, err := db.Query("SELECT namegroupRu FROM groups WHERE sheet = $1", renameSheetGroup(courseName))
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при извлечении групп для курса '%s': %v", courseName, err)
 	}

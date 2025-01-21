@@ -38,3 +38,42 @@ func replaceCyrillicWithLatin(input string) string {
 	}
 	return result.String()
 }
+
+func replaceLatinWithCyrillic(input string) string {
+	translitMap := map[string]string{
+		"A": "А", "B": "Б", "V": "В", "G": "Г", "D": "Д", "E": "Е", "ZH": "Ж", "Z": "З", "I": "И",
+		"K": "К", "L": "Л", "M": "М", "N": "Н", "O": "О", "P": "П", "R": "Р", "S": "С", "T": "Т", "U": "У",
+		"F": "Ф", "H": "Х", "TS": "Ц", "CH": "Ч", "SH": "Ш", "SHH": "Щ", "Y": "Ы", "YU": "Ю", "YA": "Я",
+		// Маленькие буквы латиницы
+		"a": "а", "b": "б", "v": "в", "g": "г", "d": "д", "e": "е", "zh": "ж", "z": "з", "i": "и",
+		"k": "к", "l": "л", "m": "м", "n": "н", "o": "о", "p": "п", "r": "р", "s": "с", "t": "т", "u": "у",
+		"f": "ф", "h": "х", "ts": "ц", "ch": "ч", "sh": "ш", "shh": "щ", "y": "ы", "yu": "ю", "ya": "я",
+	}
+
+	var result strings.Builder
+	i := 0
+	runes := []rune(input)
+
+	for i < len(runes) {
+		if i+1 < len(runes) {
+			// Проверяем двухсимвольные сочетания
+			pair := string(runes[i]) + string(runes[i+1])
+			if replacement, ok := translitMap[pair]; ok {
+				result.WriteString(replacement)
+				i += 2
+				continue
+			}
+		}
+
+		// Проверяем одиночный символ
+		char := string(runes[i])
+		if replacement, ok := translitMap[char]; ok {
+			result.WriteString(replacement)
+		} else {
+			result.WriteRune(runes[i])
+		}
+		i++
+	}
+
+	return result.String()
+}

@@ -80,6 +80,7 @@ func schedule() {
 				fmt.Printf("Таблица для группы %s успешно создана!\n", replaceCyrillicWithLatin(group))
 			}
 
+			seen := make([]string, 0)
 			for i := 1; i < len(groups); i++ {
 				cellGroup := string(groups[i])
 				mainCell := string(cellGroup[0])
@@ -89,38 +90,54 @@ func schedule() {
 				} else {
 					startRow += 1
 				}
+
 				for k := startRow; k < len(f.GetRows(sheets[index]))+1; k++ {
+					day := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", "A", k)))
+					time := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", "B", k)))
+					couple := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", string(mainCell), k)))
 
-					if removeSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", string(mainCell), k))) != "" {
-						day := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", "A", k)))
-						time := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", "B", k)))
-						couple := removeExtraSpaces(f.GetCellValue(sheets[index], fmt.Sprintf("%s%d", string(mainCell), k)))
-						classCouple := parseClassInfo(couple)
-						scheduleGroup := []struct {
-							dayWeek    string
-							timeCouple string
-							subject    string
-							auditory   string
-							teacher    string
-							weeks      string
-						}{
-							{day, time, classCouple.Subject, classCouple.Auditory, classCouple.Teacher, classCouple.Weeks},
-						}
+					// Если значение в ячейке не пустое
+					if couple != "" {
+						// Формируем уникальный ключ для комбинации day, time, couple
+						key := fmt.Sprintf("%s|%s|%s", day, time, couple)
 
-						for _, lesson := range scheduleGroup {
-							_, err := courseDB.Exec(fmt.Sprintf(`
-							INSERT INTO %s (day_of_week, time, subject, auditory, teacher, weeks)
-							SELECT $1, $2, $3, $4, $5, $6
-							WHERE NOT EXISTS (
-								SELECT 1 FROM %s WHERE day_of_week = $1 AND time = $2 AND subject = $3 AND auditory = $4 AND teacher = $5 AND weeks = $6 
-								)
-							`, tableName, tableName), lesson.dayWeek, lesson.timeCouple, lesson.subject, lesson.auditory, lesson.teacher, lesson.weeks)
-							if err != nil {
-								fmt.Printf("Ошибка при добавлении записи в таблицу для группы %s: %s\n", group, err)
-								fmt.Println(tableName, scheduleGroup)
-							} else {
-								fmt.Printf("Запись для группы %s успешно добавлена!\n", group)
+						// Проверяем, существует ли такая комбинация в карте
+						if !contains(seen, key) {
+							// Если комбинации нет, добавляем её в карту
+							seen = append(seen, key)
 
+							// Дальше обрабатываем пару (day, time, couple) как уникальную
+							classCouple := parseClassInfo(couple)
+
+							// Ваш дальнейший код для обработки уникальной пары
+							// Например:
+							// couples = append(couples, classCouple)
+							scheduleGroup := []struct {
+								dayWeek    string
+								timeCouple string
+								subject    string
+								auditory   string
+								teacher    string
+								weeks      string
+							}{
+								{day, time, classCouple.Subject, classCouple.Auditory, classCouple.Teacher, classCouple.Weeks},
+							}
+
+							for _, lesson := range scheduleGroup {
+								_, err := courseDB.Exec(fmt.Sprintf(`
+								INSERT INTO %s (day_of_week, time, subject, auditory, teacher, weeks)
+								SELECT $1, $2, $3, $4, $5, $6
+								WHERE NOT EXISTS (
+									SELECT 1 FROM %s WHERE day_of_week = $1 AND time = $2 AND subject = $3 AND auditory = $4 AND teacher = $5 AND weeks = $6 
+									)
+								`, tableName, tableName), lesson.dayWeek, lesson.timeCouple, lesson.subject, lesson.auditory, lesson.teacher, lesson.weeks)
+								if err != nil {
+									fmt.Printf("Ошибка при добавлении записи в таблицу для группы %s: %s\n", group, err)
+									fmt.Println(tableName, scheduleGroup)
+								} else {
+									fmt.Printf("Запись для группы %s успешно добавлена!\n", group)
+
+								}
 							}
 						}
 					}

@@ -12,16 +12,13 @@ import (
 )
 
 func FunctionScheduleBot() {
+	// deleteAllSchedule()``
 	fmt.Println("func: Schedule Bot")
-
-	// createDataBases()
-
 	LaunchScheduleBot()
 }
 
 func LaunchScheduleBot() {
 	ownerId := 5266257091
-	GlobalWeek := 17
 
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
@@ -44,7 +41,7 @@ func LaunchScheduleBot() {
 		log.Fatalf("Error getting updates: %v", err)
 	}
 	state := make(map[string]string)
-	// ==============================================POSTGRESQL==============================================
+	// ============================================x ==POSTGRESQL==============================================
 	connStr := "user=postgres password=password sslmode=disable"
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -52,6 +49,7 @@ func LaunchScheduleBot() {
 	}
 	defer db.Close()
 	// ==============================================DataBasesCreate==============================================
+	createFilesTable(db)
 	createTableUsers(db)
 	createDataBasesExcel(db)
 	// ==============================================FOLDER==============================================
@@ -59,11 +57,12 @@ func LaunchScheduleBot() {
 	if _, err := os.Stat(saveDir); os.IsNotExist(err) {
 		err := os.Mkdir(saveDir, 0755)
 		if err != nil {
-			log.Fatalf("Failed to create directory: %v", err)
+			log.Printf("Failed to create directory: %v", err)
 		}
 	}
 	// ==============================================UPDATES==============================================
-
+	nameFileSlice, _ := getExcelName()
+	GlobalWeek := nameFileSlice[1]
 	var currentMessage *tgbotapi.Message
 	for update := range updates {
 		if update.Message != nil {
@@ -92,6 +91,11 @@ func LaunchScheduleBot() {
 				}
 			}
 			if update.Message.Document != nil && update.Message.From.ID == ownerId {
+				if update.Message.Caption == "" {
+					msg := tgbotapi.NewMessage(update.Message.Chat.ID, "🆘 Вместе с файлом необходимо ввести номер недели: «15»")
+					bot.Send(msg)
+					continue
+				}
 				document := update.Message.Document
 				fileID := document.FileID
 
@@ -103,6 +107,11 @@ func LaunchScheduleBot() {
 					msg := tgbotapi.NewMessage(update.Message.Chat.ID, "🆘 Произошла ошибка при получении файла.")
 					bot.Send(msg)
 					continue
+				}
+
+				underMessage := "0" // Значение по умолчанию
+				if update.Message.Caption != "" {
+					underMessage = update.Message.Caption
 				}
 
 				// Генерируем имя для сохранения файла
@@ -119,14 +128,18 @@ func LaunchScheduleBot() {
 					bot.Send(msg)
 					continue
 				}
-				ReloadFile(filenm)
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "🔄 Обработка файла")
+				bot.Send(msg)
+
+				ReloadFile(filenm, underMessage)
 
 				createTableUsers(db)
 				createDataBasesExcel(db)
 
 				createButtonActions(state)
-
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Файл успешно сохранен как %s", fileName))
+				nameFileSlice, _ := getExcelName()
+				GlobalWeek = nameFileSlice[1]
+				msg = tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Файл успешно сохранен как %s", fileName))
 				bot.Send(msg)
 			}
 			if update.Message.Text == "/snupload_schedule" {
@@ -140,7 +153,8 @@ func LaunchScheduleBot() {
 					bot.Send(msg)
 				}
 			} else if update.Message.Text == "/start" {
-				msgText := fmt.Sprintf("<a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n\n📆 Установленная неделя: %d\n🔎 Для поиска расписания:\n/snstart_schedule", GlobalWeek)
+				msgText := fmt.Sprintf("<a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n\n📆 Установленная неделя: %s\n🔎 Для поиска расписания:\n/snstart_schedule", GlobalWeek)
+
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
 				msg.ParseMode = tgbotapi.ModeHTML
 
@@ -148,7 +162,7 @@ func LaunchScheduleBot() {
 				currentMessage = &sentMsg
 			} else if update.Message.Text == "/snstart_schedule" {
 				state["course"], state["group"], state["day"] = "", "", ""
-				msgText := fmt.Sprintf("🏛 Расписание by <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a>\n📆 Установленная неделя: %d\n\nВыберите уровень обучения:", GlobalWeek)
+				msgText := fmt.Sprintf("🏛 Расписание by <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nВыберите уровень обучения:", GlobalWeek)
 
 				buttonActions := createButtonActions(state)
 				inlineKeyboard := dynamic_buttonsFromActions(buttonActions, state)
@@ -159,7 +173,7 @@ func LaunchScheduleBot() {
 				sentMsg, _ := bot.Send(msg)
 				currentMessage = &sentMsg
 			} else {
-				text := "🆘 Извините, я вас не понимаю.\nДоступные команды:\n/start\n/snstart_schedule"
+				text := "Для работы с ботом:\nℹ️ /start - Начало работы\nℹ️ /snstart_schedule - Поиск расписания"
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, text)
 				bot.Send(msg)
 			}
@@ -186,7 +200,7 @@ func LaunchScheduleBot() {
 
 			if state["course"] == "" && state["group"] == "" {
 				state["course"], state["group"], state["day"] = "", "", ""
-				msgText := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a>\n📆 Установленная неделя: %d\n\nВыберите уровень обучения:", GlobalWeek)
+				msgText := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nВыберите уровень обучения:", GlobalWeek)
 
 				buttonActions := createButtonActions(state)
 				inlineKeyboard := dynamic_buttonsFromActions(buttonActions, state)
@@ -203,7 +217,7 @@ func LaunchScheduleBot() {
 			} else if state["course"] != "" && state["group"] == "" {
 				groups := get_groups(get_file_excel(), state["course"])
 				inlineKeyboard = dynamic_buttons(groups, state)
-				msgText = fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a>\n📆 Установленная неделя: %d\n\nУровень обучения: %s\nВыберите группу:", GlobalWeek, state["course"])
+				msgText = fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nВыберите группу:", GlobalWeek, state["course"])
 				backButton := tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_course")
 				inlineKeyboard.InlineKeyboard = append(inlineKeyboard.InlineKeyboard, []tgbotapi.InlineKeyboardButton{backButton})
 
@@ -222,7 +236,7 @@ func LaunchScheduleBot() {
 				backButton := tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_group")
 				inlineKeyboard.InlineKeyboard = append(inlineKeyboard.InlineKeyboard, []tgbotapi.InlineKeyboardButton{backButton})
 
-				msgText = fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a>\n📆 Установленная неделя: %d\n\nУровень обучения: %s\nГруппа: %s\nВыберите день:", GlobalWeek, state["course"], state["group"])
+				msgText = fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nГруппа: %s\nВыберите день:", GlobalWeek, state["course"], state["group"])
 
 				if currentMessage != nil {
 					editMsg := tgbotapi.NewEditMessageText(update.CallbackQuery.Message.Chat.ID, currentMessage.MessageID, msgText)
@@ -234,7 +248,7 @@ func LaunchScheduleBot() {
 				}
 
 			} else if state["course"] != "" && state["group"] != "" && state["day"] != "" {
-				startcoupleString := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a>\n📆 Установленная неделя: %d\n\nУровень обучения: %s\nГруппа: %s\n\n📅 %s\n\n", GlobalWeek, state["course"], state["group"], state["day"])
+				startcoupleString := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nГруппа: %s\n\n📅 %s\n\n", GlobalWeek, state["course"], state["group"], state["day"])
 				coupleList := FunctionDataBaseTableData(state["course"], state["group"], state["day"])
 				coupleString, flagConcatenateAuditory, flagConcatenateTeacher := "", "", ""
 				for i := 0; i < len(coupleList); i++ {
@@ -298,7 +312,7 @@ func LaunchScheduleBot() {
 					}
 				}
 			}
-			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "Я всё вижу")
+			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "Тык")
 			bot.AnswerCallbackQuery(callback)
 		}
 	}

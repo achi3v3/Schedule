@@ -1,0 +1,383 @@
+package funcExcel
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"sync"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+)
+
+const (
+	Welcome = "Добро пожаловать"
+)
+
+type Step int
+
+const (
+	StepCourse Step = iota
+	StepGroup
+	StepDay
+	StepSchedule
+)
+
+type UserState struct {
+	Step   Step
+	Course string
+	Group  string
+	Day    string
+}
+
+var userStates = struct {
+	sync.RWMutex
+	data map[int64]*UserState
+}{data: make(map[int64]*UserState)}
+
+func getUserState(chatID int64) *UserState {
+	userStates.RLock()
+	defer userStates.RUnlock()
+	if state, exists := userStates.data[chatID]; exists {
+		return state
+	}
+	return nil
+}
+
+// Установить состояние пользователя
+func setUserState(chatID int64, state *UserState) {
+	userStates.Lock()
+	defer userStates.Unlock()
+	userStates.data[chatID] = state
+}
+
+func Start(ctx context.Context, b *bot.Bot, update *models.Update) {
+	setUserState(update.Message.Chat.ID, &UserState{Step: StepCourse})
+	// Список курсов
+	courses, _ := getAllSheets()
+	fmt.Println(courses)
+
+	// courses := []string{"1 Курс", "2 Курс", "3 Курс", "4 Курс", "5 Курс", "6 Курс"}
+
+	// Генерация кнопок для курсов
+	var keyboardRows [][]models.InlineKeyboardButton
+	for _, course := range courses {
+		callbackData := renameSheetGroup(course)
+		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+			{Text: course, CallbackData: callbackData},
+		})
+	}
+	if len(courses) == 0 {
+		callbackData := "error"
+		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+			{Text: "ОШИБКА", CallbackData: callbackData},
+		})
+	}
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboardRows,
+	}
+
+	// Отправляем сообщение с выбором курса
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      update.Message.Chat.ID,
+		Text:        "Выберите курс:",
+		ReplyMarkup: keyboard,
+	})
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+
+	// Инициализируем состояние пользователя
+	// setUserState(update.Message.Chat.ID, &UserState{})
+	sendCourseSelection(ctx, b, update.Message.Chat.ID)
+}
+func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+
+	callbackQuery := update.CallbackQuery
+	message := callbackQuery.Message.Message
+	chatID := message.Chat.ID
+	callbackData := callbackQuery.Data
+
+	// Логика обработки данных
+	state := getUserState(chatID)
+	if state == nil {
+		state = &UserState{}
+		setUserState(chatID, state)
+	}
+
+	// Дальнейшая логика работы с состояниями
+	switch state.Step {
+	case StepCourse:
+		state.Course = callbackData
+		state.Step = StepGroup
+		setUserState(chatID, state)
+		sendGroupSelection(ctx, b, chatID, state)
+
+	case StepGroup:
+		state.Group = callbackData
+		state.Step = StepDay
+		setUserState(chatID, state)
+		sendDaySelection(ctx, b, chatID)
+
+	case StepDay:
+		state.Day = callbackData
+		state.Step = StepSchedule
+		setUserState(chatID, state)
+
+		schedule := getSchedule(state.Course, state.Group, state.Day, state)
+		sendSchedule(ctx, b, chatID, schedule)
+	default:
+		log.Println("Неизвестное состояние шага")
+	}
+	// state := getUserState(chatID)
+	// if state == nil {
+	// 	state = &UserState{}
+	// 	setUserState(chatID, state)
+	// }
+
+	// // Обработка кнопки "Назад"
+	// if callbackData == "back" {
+	// 	if state.Day != "" {
+	// 		// Если на этапе выбора дня, обнуляем день и возвращаемся к выбору группы
+	// 		state.Day = ""
+	// 		sendGroupSelection(ctx, b, chatID, state)
+	// 	} else if state.Group != "" {
+	// 		// Если на этапе выбора группы, обнуляем группу и возвращаемся к выбору курса
+	// 		state.Group = ""
+	// 		sendCourseSelection(ctx, b, chatID)
+
+	// 	}
+	// 	return
+	// }
+
+	// // Если курс еще не выбран, обрабатываем выбор курса
+	// if state.Course == "" {
+	// 	state.Course = callbackData
+	// 	setUserState(chatID, state)
+	// 	sendGroupSelection(ctx, b, chatID, state)
+	// 	return
+	// }
+
+	// // Если группа еще не выбрана, обрабатываем выбор группы
+	// if state.Group == "" {
+	// 	state.Group = callbackData
+	// 	setUserState(chatID, state)
+	// 	sendDaySelection(ctx, b, chatID)
+	// 	return
+	// }
+
+	// // Если день недели уже выбран, показываем расписание
+	// if state.Day == "" {
+	// 	state.Day = callbackData
+	// 	setUserState(chatID, state)
+
+	// 	var keyboardRows [][]models.InlineKeyboardButton
+
+	// 	// Добавляем кнопку "Назад"
+	// 	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+	// 		{Text: "Назад", CallbackData: "back"},
+	// 	})
+
+	// 	keyboard := &models.InlineKeyboardMarkup{
+	// 		InlineKeyboard: keyboardRows,
+	// 	}
+
+	// 	// Получаем расписание
+	// 	schedule := getSchedule(state.Course, state.Group, state.Day, state) // Функция, возвращающая расписание
+	// 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+	// 		ChatID:      chatID,
+	// 		Text:        schedule,
+	// 		ReplyMarkup: keyboard,
+	// 		ParseMode:   models.ParseModeHTML,
+	// 	})
+	// 	if err != nil {
+	// 		log.Printf("Ошибка отправки сообщения: %v", err)
+	// 	}
+	// 	return
+	// }
+}
+func sendCourseSelection(ctx context.Context, b *bot.Bot, chatID int64) {
+	// courses := []string{"1 Курс", "2 Курс", "3 Курс", "4 Курс", "5 Курс", "6 Курс"}
+	courses, _ := getAllSheets()
+
+	var keyboardRows [][]models.InlineKeyboardButton
+	for _, course := range courses {
+		callbackData := renameSheetGroup(course)
+		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+			{Text: course, CallbackData: callbackData},
+		})
+	}
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboardRows,
+	}
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        "Выберите курс:",
+		ReplyMarkup: keyboard,
+	})
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+func sendSchedule(ctx context.Context, b *bot.Bot, chatID int64, schedule string) {
+	var keyboardRows [][]models.InlineKeyboardButton
+
+	// Добавляем кнопку "Назад"
+	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+		{Text: "Назад", CallbackData: "back"},
+	})
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboardRows,
+	}
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        schedule,
+		ReplyMarkup: keyboard,
+		ParseMode:   models.ParseModeHTML,
+	})
+	if err != nil {
+		log.Printf("Ошибка отправки расписания: %v", err)
+	}
+}
+
+func sendGroupSelection(ctx context.Context, b *bot.Bot, chatID int64, state *UserState) {
+	fmt.Println(state.Course)
+	groups, _ := getGroupsByCourse(state.Course)
+	fmt.Println(groups) // Функция, возвращающая список групп
+	var keyboardRows [][]models.InlineKeyboardButton
+	for _, group := range groups {
+		callbackData := (group)
+		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+			{Text: replaceLatinWithCyrillic(group), CallbackData: callbackData},
+		})
+	}
+
+	// Добавляем кнопку "Назад"
+	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+		{Text: "Назад", CallbackData: "back"},
+	})
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboardRows,
+	}
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        "Выберите группу:",
+		ReplyMarkup: keyboard,
+	})
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+// sendDaySelection отправляет выбор дня недели
+func sendDaySelection(ctx context.Context, b *bot.Bot, chatID int64) {
+	days := []string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"}
+	var keyboardRows [][]models.InlineKeyboardButton
+	for _, day := range days {
+		callbackData := day
+		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+			{Text: day, CallbackData: callbackData},
+		})
+	}
+
+	// Добавляем кнопку "Назад"
+	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
+		{Text: "Назад", CallbackData: "back"},
+	})
+
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboardRows,
+	}
+
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        "Выберите день недели:",
+		ReplyMarkup: keyboard,
+	})
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+func getGroupsForCourse(course string) []string {
+	switch course {
+	case "kurs1":
+		return []string{"Группа 1", "Группа 2", "Группа 3"}
+	case "kurs2":
+		return []string{"Группа А", "Группа Б", "Группа В"}
+	default:
+		return []string{"Группа X", "Группа Y"}
+	}
+}
+
+// Пример функции для получения расписания
+func getSchedule(course, group, day string, state *UserState) string {
+
+	allrangetime := []string{
+		"08.00-09.20",
+		"09.35-10.55",
+		"11.35-12.55",
+		"13.10-14.30",
+		"15.10-16.30",
+		"16.45-18.05",
+		"18.20-19.40",
+		"18.20-19.40",
+		"19.55-21.15",
+	}
+
+	fmt.Println(state)
+	GlobalWeek := "17"
+	startcoupleString := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nГруппа: %s\n\n📅 %s\n\n", GlobalWeek, state.Course, state.Group, state.Day)
+	coupleList := FunctionDataBaseTableData(state.Course, state.Group, state.Day)
+	coupleString, flagConcatenateAuditory, flagConcatenateTeacher := "", "", ""
+	for i := 0; i < len(coupleList); i++ {
+		numberCoupleTime := 0
+		CoupleTime := coupleList[i][1]
+		if contains(allrangetime, CoupleTime) {
+			numberCoupleTime = findIndex(allrangetime, CoupleTime) + 1
+		}
+		CoupleSubject := coupleList[i][2]
+		CoupleAuditory := coupleList[i][3]
+		CoupleTeacher := coupleList[i][4]
+		CoupleWeeks := coupleList[i][5]
+		if flagConcatenateAuditory != "" {
+			CoupleAuditory = fmt.Sprintf("%s / %s", CoupleAuditory, flagConcatenateAuditory)
+			flagConcatenateAuditory = ""
+		}
+		if flagConcatenateTeacher != "" {
+			CoupleTeacher = fmt.Sprintf("%s / %s", CoupleTeacher, flagConcatenateTeacher)
+			flagConcatenateTeacher = ""
+		}
+		if i+1 < len(coupleList) {
+			if CoupleTime == coupleList[i+1][1] && CoupleSubject == coupleList[i+1][2] {
+				if CoupleTeacher == coupleList[i+1][4] && CoupleAuditory != coupleList[i+1][3] {
+					flagConcatenateAuditory = CoupleAuditory
+					continue
+				} else if CoupleTeacher != coupleList[i+1][4] && CoupleAuditory != coupleList[i+1][3] {
+					flagConcatenateAuditory = CoupleAuditory
+					flagConcatenateTeacher = CoupleTeacher
+					continue
+				} else if CoupleTeacher != coupleList[i+1][4] && CoupleAuditory == coupleList[i+1][3] {
+					flagConcatenateTeacher = CoupleTeacher
+					continue
+				}
+			}
+		}
+		if CoupleWeeks != "—" {
+			coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(%d пара)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i>\n    🔍 <i>%s</i></blockquote>\n", CoupleTime, numberCoupleTime, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher, removeBrackets(CoupleWeeks))
+		} else {
+			coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(%d пара)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i></blockquote>\n", CoupleTime, numberCoupleTime, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher)
+
+		}
+	}
+
+	coupleString = startcoupleString + coupleString
+
+	return coupleString
+}
