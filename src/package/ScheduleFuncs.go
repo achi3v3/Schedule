@@ -190,10 +190,17 @@ func createTableUsers(db *sql.DB) {
 	}
 	fmt.Println("USERS OKAY")
 }
-func addUser(db *sql.DB, userID int, username, firstName string) bool {
+func addUser(userID int64, username, firstName string) bool {
+	connStr := "user=postgres password=password sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Printf("Ошибка при подключении к базе данных: %s", err)
+	}
+	defer db.Close()
 	var exists bool
 	queryCheck := `SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1)`
-	err := db.QueryRow(queryCheck, userID).Scan(&exists)
+	err = db.QueryRow(queryCheck, userID).Scan(&exists)
+
 	if err != nil {
 		return false
 	}
