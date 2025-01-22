@@ -75,7 +75,7 @@ func LaunchScheduleBot() {
 				userId := update.Message.From.ID
 				username := update.Message.From.UserName
 				firstname := update.Message.From.FirstName
-				flag := addUser(db, userId, username, firstname)
+				flag := true //addUser(userId, username, firstname)
 				if flag {
 					if update.Message.From.UserName == "" {
 						username = "none"
@@ -83,7 +83,7 @@ func LaunchScheduleBot() {
 					if update.Message.From.FirstName == "" {
 						firstname = "none"
 					}
-					msgText := fmt.Sprintf("<b>✅ Новый пользователь</b>\n\n<blockquote>id: %d</blockquote>\nusername: @%s\n<blockquote>firstname: %s</blockquote>\n", userId, username, firstname)
+					msgText := fmt.Sprintf("<b>✅ Новый пользователь</b>\n\nusername: @%s\n<blockquote>id: %d</blockquote>\n<blockquote>firstname: %s</blockquote>\n", username, userId, firstname)
 					msg := tgbotapi.NewMessage(int64(ownerId), msgText)
 					msg.ParseMode = tgbotapi.ModeHTML
 
