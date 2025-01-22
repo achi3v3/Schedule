@@ -24,7 +24,7 @@ func getWeek() string {
 	return GlobalWeek
 }
 
-const actionCooldown = 160 * time.Millisecond // Ограничение: 5 секунд между действиями
+const actionCooldown = 400 * time.Millisecond
 
 func isSpamming(userID int64) bool {
 	userLastAction.Lock()
