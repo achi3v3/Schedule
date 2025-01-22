@@ -14,10 +14,6 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const (
-	Welcome = "Добро пожаловать"
-)
-
 func editMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, keyboard *models.InlineKeyboardMarkup) {
 	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:      chatID,
@@ -79,9 +75,15 @@ func handleDocument(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 
 	response := fmt.Sprintf("✅ Успешно сохранено!\nℹ️ Файл: '%s'\n", doc.FileName)
-	if caption != "" {
-		response += fmt.Sprintf("ℹ️ Установленная неделя: %s", caption)
+	if caption == "" {
+		fmt.Println("Ошибка скачивания файла не указан caption")
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "❌ Не указана неделя. При отправке файла необходимо прикрепить текст - номер недели",
+		})
+		return
 	}
+	response += fmt.Sprintf("ℹ️ Установленная неделя: %s", caption)
 	ReloadFile(doc.FileName, caption)
 	createTableUsers(db)
 	createDataBasesExcel(db)
