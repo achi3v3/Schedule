@@ -34,7 +34,6 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			return
 		}
 	}
-
 	if update.CallbackQuery == nil {
 		log.Println("CallbackQuery is nil")
 		return
@@ -119,6 +118,4 @@ func databaseHandler() {
 			log.Printf("Failed to create directory: %v", err)
 		}
 	}
-	// ==============================================UPDATES==============================================
-
 }
