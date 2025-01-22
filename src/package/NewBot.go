@@ -31,7 +31,9 @@ func launchNewBot() {
 	if err != nil {
 		panic(err)
 	}
+	b.RegisterHandlerMatchFunc(isStart, Start)
 	b.RegisterHandlerMatchFunc(isSnStartSchedule, snStartSchedule)
+	b.RegisterHandlerMatchFunc(isUploadFile, snUploadFile)
 
 	b.Start(ctx)
 }
