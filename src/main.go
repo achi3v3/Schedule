@@ -15,8 +15,8 @@ func main() {
 	fmt.Scan(&answer)
 	if strings.ToLower(answer) == "конечно" {
 		fmt.Println("ПОЛНАЯ ЗАГРУЗКА БД (ПЕРЕД ЗАПУСКОМ ОЖИДАНИЕ 10 СЕКУНД)")
-		// functions.FunctionDbWriter()
 		time.Sleep(10 * time.Second)
+		functions.FunctionDbWriter()
 	}
 	functions.NewBot()
 }
