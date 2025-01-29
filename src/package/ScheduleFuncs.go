@@ -1,10 +1,8 @@
 package funcExcel
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,24 +24,7 @@ type ButtonAction struct {
 }
 
 // ===========================================BUTTONSHANDLERS==============================================================
-func getAdjacentDays(currentDay string) (string, string) {
-	daysOfWeek := []string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"}
-	currentIndex := -1
-	for i, day := range daysOfWeek {
-		if day == currentDay {
-			currentIndex = i
-			break
-		}
-	}
 
-	if currentIndex == -1 {
-		return "", ""
-	}
-	prevIndex := (currentIndex - 1 + len(daysOfWeek)) % len(daysOfWeek)
-	nextIndex := (currentIndex + 1) % len(daysOfWeek)
-
-	return daysOfWeek[prevIndex], daysOfWeek[nextIndex]
-} // Лево Право День недели
 func createButtonActions(state map[string]string) map[string]ButtonAction {
 	courses, _ := getAllSheets()
 	// courses := get_sheets(get_file_excel())
@@ -159,235 +140,12 @@ func handleButtonClick(update tgbotapi.Update, bot *tgbotapi.BotAPI, button stri
 	}
 } // Обработка кнопок
 // ===========================================DATABASEHANDLERS==============================================================
-func createDataBasesExcel(db *sql.DB) {
-	createTableSheets(db)
-	createTableGroups(db)
-
-	sheets := get_sheets(get_file_excel())
-	for _, sheet := range sheets {
-		addSheets(db, sheet)
-		groups := get_groups(get_file_excel(), sheet)
-		for _, group := range groups {
-			addGroups(db, sheet, group)
-		}
-	}
-}
 
 // ===========================================USERS==============================================================
-func createTableUsers(db *sql.DB) {
-	query := `
-	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		user_id BIGINT NOT NULL UNIQUE,
-		username TEXT NOT NULL,
-		first_name TEXT NOT NULL,
-		registration_time TIMESTAMP NOT NULL,
-		user_group TEXT DEFAULT ''
-	);`
-	_, err := db.Exec(query)
-	if err != nil {
-		log.Printf("Ошибка при создании таблицы: %s", err)
-	}
-	fmt.Println("USERS OKAY")
-}
-func addUser(userID int64, username, firstName string) bool {
-	connStr := "user=postgres password=password sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Printf("Ошибка при подключении к базе данных: %s", err)
-	}
-	defer db.Close()
-	var exists bool
-	queryCheck := `SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1)`
-	err = db.QueryRow(queryCheck, userID).Scan(&exists)
-
-	if err != nil {
-		return false
-	}
-	if exists {
-		return false
-	}
-	queryInsert := `
-		INSERT INTO users (user_id, username, first_name, registration_time, user_group)
-		VALUES ($1, $2, $3, $4, $5)
-	`
-	registrationTime := time.Now()
-	userGroup := ""
-	_, err = db.Exec(queryInsert, userID, username, firstName, registrationTime, userGroup)
-	if err != nil {
-		return false
-	}
-	fmt.Println("Пользователь успешно добавлен в базу данных!")
-	return true
-}
 
 // ===========================================SHEETS==============================================================
-func createTableSheets(db *sql.DB) {
-	query := `
-	CREATE TABLE IF NOT EXISTS sheets (
-		id SERIAL PRIMARY KEY,
-		course TEXT NOT NULL UNIQUE
-	);`
-	_, err := db.Exec(query)
-	if err != nil {
-		log.Printf("Ошибка при создании таблицы: %s", err)
-	}
-	fmt.Println("TABLESHEETS OKAY")
-}
-func addSheets(db *sql.DB, sheet string) error {
-	var exists bool
-	queryCheck := `SELECT EXISTS(SELECT 1 FROM sheets WHERE course = $1)`
-	err := db.QueryRow(queryCheck, sheet).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("ошибка при проверке существования пользователя: %v", err)
-	}
-	if exists {
-		fmt.Println("Course с таким названием уже существует")
-		return nil
-	}
-	queryInsert := `
-        INSERT INTO sheets (course)
-        VALUES ($1)
-    `
-	_, err = db.Exec(queryInsert, sheet)
-	if err != nil {
-		return fmt.Errorf("ошибка при добавлении course: %v", err)
-	}
-
-	fmt.Println("Course успешно добавлен в базу данных!")
-	return nil
-}
-func getAllSheets() ([]string, error) {
-
-	connStr := "user=postgres password=password sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Printf("Ошибка при подключении к базе данных: %s", err)
-	}
-	defer db.Close()
-
-	var sheets []string
-
-	rows, err := db.Query("SELECT course FROM sheets")
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при извлечении курсов: %v", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var course string
-		if err := rows.Scan(&course); err != nil {
-			return nil, fmt.Errorf("ошибка при сканировании данных: %s", err)
-		}
-		sheets = append(sheets, course)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка при обработке результата запроса: %s", err)
-	}
-
-	return sheets, nil
-}
 
 // ===========================================GROUPS==============================================================
-func createTableGroups(db *sql.DB) {
-	query := `
-	CREATE TABLE IF NOT EXISTS groups (
-		id SERIAL PRIMARY KEY,
-		sheet TEXT NOT NULL,
-		sheetRu TEXT NOT NULL,
-		namegroup TEXT NOT NULL UNIQUE,
-		namegroupRu TEXT NOT NULL UNIQUE
-	);`
-	_, err := db.Exec(query)
-	if err != nil {
-		log.Printf("Ошибка при создании таблицы: %s", err)
-	}
-	fmt.Println("TABLEGROUPS OKAY")
-}
-func addGroups(db *sql.DB, sheet, group string) error {
-	var exists bool
-	queryCheck := `SELECT EXISTS(SELECT 1 FROM groups WHERE namegroup = $1)`
-	err := db.QueryRow(queryCheck, group).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("ошибка при проверке существования namegroup: %v", err)
-	}
-	if exists {
-		fmt.Println("namegroup с таким названием уже существует")
-		return nil
-	}
-	queryInsert := `
-		INSERT INTO groups (sheet, sheetRu, namegroup, namegroupRu)
-		VALUES ($1, $2, $3, $4)
-	`
-	_, err = db.Exec(queryInsert, renameSheetGroup(sheet), sheet, renameSheetGroup(group), group)
-	if err != nil {
-		return fmt.Errorf("ошибка при добавлении namegroup: %v", err)
-	}
-
-	fmt.Println("namegroup успешно добавлен в базу данных!")
-	return nil
-}
-func getGroupsByCourse(courseName string) ([]string, error) {
-	connStr := "user=postgres password=password sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Printf("Ошибка при подключении к баз %sе данных: ", err)
-	}
-	defer db.Close()
-
-	var groups []string
-
-	rows, err := db.Query("SELECT namegroup FROM groups WHERE sheet = $1", renameSheetGroup(courseName))
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при извлечении групп для курса '%s': %v", courseName, err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var group string
-		if err := rows.Scan(&group); err != nil {
-			return nil, fmt.Errorf("ошибка при сканировании данных: %v", err)
-		}
-		groups = append(groups, group)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка при обработке результата запроса: %v", err)
-	}
-
-	return groups, nil
-}
-func getGroupsByCourseRu(courseName string) ([]string, error) {
-	connStr := "user=postgres password=password sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Printf("Ошибка при подключении к баз %sе данных: ", err)
-	}
-	defer db.Close()
-
-	var groups []string
-
-	rows, err := db.Query("SELECT namegroupRu FROM groups WHERE sheet = $1", renameSheetGroup(courseName))
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при извлечении групп для курса '%s': %v", courseName, err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var group string
-		if err := rows.Scan(&group); err != nil {
-			return nil, fmt.Errorf("ошибка при сканировании данных: %v", err)
-		}
-		groups = append(groups, group)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка при обработке результата запроса: %v", err)
-	}
-
-	return groups, nil
-}
 
 // ===========================================OPTIMIZATION==============================================================
 var userRequests = make(map[int64]time.Time) // хранение времени последнего запроса пользователя
