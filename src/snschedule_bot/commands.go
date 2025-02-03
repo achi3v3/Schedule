@@ -3,6 +3,8 @@ package functions
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -14,34 +16,31 @@ const (
 	uploadFile      = "/snupload_schedule"
 	mygroup         = "/sn_mygroup"
 	unPinGroup      = "/snunpin_group"
-
-	idOwner = 5266257091
+	getNotices      = "/snget_mynotices"
+	getRedactors    = "/snget_redactors"
+	idOwner         = 5266257091
 )
 
-func isSnStartSchedule(update *models.Update) bool {
-	return update.Message != nil && update.Message.Text == snstartSchedule
+func isStart(update *models.Update) bool {
+	return update.Message != nil && update.Message.Text == start
 }
-func snStartSchedule(ctx context.Context, b *bot.Bot, update *models.Update) {
+func Start(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update == nil || update.Message == nil {
+		return
+	}
+	if update.Message.Chat.Type != "private" {
+		return // Игнорируем сообщения из групп
+	}
 	chatID := update.Message.Chat.ID
+	deleteUserMessageID(chatID)
 
-	if isSpamming(chatID) {
+	if !checkUserActivity(chatID) {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
-			Text:   "💢 Не торопись молодой..",
+			Text:   "🤬 Себе потыкай.. Лови бан на минуту 💢",
 		})
 		return
 	}
-	sendCourseSelectionWitoutEdit(ctx, b, chatID)
-
-	userStates.Lock()
-	if _, exists := userStates.data[chatID]; !exists {
-		userStates.data[chatID] = make(map[string]string)
-	}
-	userStates.Unlock()
-
-	setUserState(chatID, "course", "")
-	setUserState(chatID, "group", "")
-	setUserState(chatID, "day", "")
 
 	userId := update.Message.Chat.ID
 	username := update.Message.From.Username
@@ -56,117 +55,52 @@ func snStartSchedule(ctx context.Context, b *bot.Bot, update *models.Update) {
 		}
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:    idOwner,
-			Text:      fmt.Sprintf("<b>✅ Новый пользователь</b>\n\n<blockquote>id: %d</blockquote>\nusername: @%s\n<blockquote>firstname: %s</blockquote>\n", userId, username, firstname),
+			Text:      fmt.Sprintf("<b>✅ Новый пользователь</b>\n\n<blockquote>id: %d</blockquote>\n<blockquote>username: @%s</blockquote>\n<blockquote>firstname: %s</blockquote>\n", userId, username, firstname),
 			ParseMode: models.ParseModeHTML,
 		})
 	}
+	sendStart(ctx, b, chatID)
 }
-func isUploadFile(update *models.Update) bool {
-	return update.Message != nil && update.Message.Text == uploadFile
-}
-func snUploadFile(ctx context.Context, b *bot.Bot, update *models.Update) {
 
-	chatID := update.Message.Chat.ID
-	if isSpamming(chatID) {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "💢 Не торопись молодой..",
-		})
-		return
-	}
-	if chatID != idOwner {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "🔞 Недостаточно прав.",
-		})
-		return
-	}
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    chatID,
-		Text:      "✳️ Загрузка расписания:\n<blockquote>Файл: <i>File.xlsx</i></blockquote>\n<blockquote>Неделя: <i>17</i></blockquote>",
-		ParseMode: models.ParseModeHTML,
-	})
+var (
+	userActivity  = make(map[int64][]time.Time) // Хранение времени действий пользователей
+	userSanctions = make(map[int64]time.Time)   // Хранение санкций
+	mu            sync.Mutex                    // Мьютекс для конкурентного доступа
+)
 
-	userStates.Lock()
-	if _, exists := userStates.data[chatID]; !exists {
-		userStates.data[chatID] = make(map[string]string)
-	}
-	userStates.Unlock()
-}
-func isMyGroup(update *models.Update) bool {
-	return update.Message != nil && update.Message.Text == mygroup
-}
-func snMyGroup(ctx context.Context, b *bot.Bot, update *models.Update) {
-	chatID := update.Message.Chat.ID
-	if isSpamming(chatID) {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "💢 Не торопись молодой..",
-		})
-		return
-	}
-	course, group, err := GetUserCourseAndGroup(ctx, chatID)
-	if err != nil {
-		fmt.Printf("PinGroup: %s\n", err)
-	}
-	if course != "" && group != "" {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    chatID,
-			Text:      fmt.Sprintf("🪪 Ваша группа:\n<blockquote>Уровень обучения: %s\nГруппа: %s</blockquote>", course, group),
-			ParseMode: models.ParseModeHTML,
-		})
-		setUserState(chatID, "course", course)
-		setUserState(chatID, "group", group)
+const (
+	MaxCommands    = 9           // Максимум команд за минуту
+	SanctionPeriod = time.Minute // Время санкции
+	TimeWindow     = time.Minute // Временное окно для проверки
+)
 
-		state := getUserState(chatID)
-		sendDaySelectionWithoutEdit(ctx, b, chatID, state)
-	} else {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    chatID,
-			Text:      "⭕️ За вами не закреплены курс и группа..",
-			ParseMode: models.ParseModeHTML,
-		})
-		sendCourseSelectionWitoutEdit(ctx, b, chatID)
+func checkUserActivity(chatID int64) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	now := time.Now()
+
+	if sanctionEnd, sanctioned := userSanctions[chatID]; sanctioned {
+		if now.Before(sanctionEnd) {
+			return false
+		}
+		delete(userSanctions, chatID)
 	}
-}
-func isStart(update *models.Update) bool {
-	return update.Message != nil && update.Message.Text == start
-}
-func Start(ctx context.Context, b *bot.Bot, update *models.Update) {
-	chatID := update.Message.Chat.ID
-	if isSpamming(chatID) {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "💢 Не торопись молодой..",
-		})
-		return
+
+	activity := userActivity[chatID]
+	var newActivity []time.Time
+
+	for _, t := range activity {
+		if now.Sub(t) <= TimeWindow {
+			newActivity = append(newActivity, t)
+		}
 	}
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		Text:      fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Стадия-разработки)\n\nℹ️ Поиск расписания — %s\n\n👨‍👩‍👦‍👦 Моя группа — %s\n<i>1. Группа должна быть закреплена\n2. «Закрепить группу» можно при выборе группы нажав</i>\n\n🚮 Открепить группу — %s\n\n🆕 Загрузить расписание — %s\n<i>1. Ожидается эксель-файл + прикрепленный текст(неделя)\n2. Доступ только у администраторов</i>", snstartSchedule, mygroup, unPinGroup, uploadFile),
-		ChatID:    chatID,
-		ParseMode: models.ParseModeHTML,
-	})
-}
-func isUnPin(update *models.Update) bool {
-	return update.Message != nil && update.Message.Text == unPinGroup
-}
-func snUnPinGroup(ctx context.Context, b *bot.Bot, update *models.Update) {
-	chatID := update.Message.Chat.ID
-	userID := update.Message.From.ID
-	if isSpamming(chatID) {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   "💢 Не торопись молодой..",
-		})
-		return
+	newActivity = append(newActivity, now)
+	userActivity[chatID] = newActivity
+	if len(newActivity) > MaxCommands {
+		userSanctions[chatID] = now.Add(SanctionPeriod) // Блокировка на 1 минуту
+		delete(userActivity, chatID)                    // Сбрасываем активность
+		return false                                    // Пользователь заблокирован
 	}
-	_, err := PinGroup(ctx, userID, "", "")
-	if err != nil {
-		fmt.Printf("UnPinGroup: %s\n", err)
-	}
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    chatID,
-		Text:      "🪪 Ваша данные очищены:\n<blockquote>Уровень обучения: \nГруппа: </blockquote>",
-		ParseMode: models.ParseModeHTML,
-	})
+	return true
 }

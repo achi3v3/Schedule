@@ -5,6 +5,51 @@ import (
 	"strings"
 )
 
+func parseSchedule(text string) map[string]string {
+	lines := strings.Split(text, "\n")
+
+	result := map[string]string{
+		"time":     "",
+		"event":    "",
+		"auditory": "",
+		"teacher":  "",
+		"weeks":    "",
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Если строка начинается с "1", то это время
+		if strings.HasPrefix(line, "1") {
+			result["time"] = strings.TrimSpace(line[1:])
+		} else if strings.HasPrefix(line, "2") { // Если строка начинается с "2", то это мероприятие
+			result["event"] = strings.TrimSpace(line[1:])
+		} else if strings.HasPrefix(line, "3") { // Если строка начинается с "3", то это аудитория
+			result["auditory"] = strings.TrimSpace(line[1:])
+		} else if strings.HasPrefix(line, "4") { // Если строка начинается с "4", то это преподаватель
+			result["teacher"] = strings.TrimSpace(line[1:])
+		} else if strings.HasPrefix(line, "5") { // Если строка начинается с "5", то это недели
+			result["weeks"] = strings.TrimSpace(line[1:])
+		}
+	}
+	if result["time"] == "" {
+		result["time"] = "—"
+	}
+	if result["event"] == "" {
+		result["event"] = "—"
+	}
+	if result["auditory"] == "" {
+		result["auditory"] = "—"
+	}
+	if result["teacher"] == "" {
+		result["teacher"] = "—"
+	}
+	if result["weeks"] == "" {
+		result["weeks"] = "—"
+	}
+	return result
+}
+
 // ===========================================MAIN==============================================================
 func parseClassInfo(input string) ClassInfo {
 	input = strings.TrimSpace(input)

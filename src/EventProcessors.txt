@@ -1,0 +1,115 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"github.com/go-telegram-bot-api/telegram-bot-api"
+)
+
+// EventProcessor - структура для обработки событий
+type EventProcessor struct {
+	bot    *tgbotapi.BotAPI
+	state  map[string]string
+	ownerID int64
+}
+
+// NewEventProcessor - создает новый EventProcessor
+func NewEventProcessor(bot *tgbotapi.BotAPI, ownerID int64) *EventProcessor {
+	return &EventProcessor{
+		bot:    bot,
+		state:  make(map[string]string),
+		ownerID: ownerID,
+	}
+}
+
+// ProcessUpdate - процесс обработки события обновлений
+func (ep *EventProcessor) ProcessUpdate(update tgbotapi.Update) {
+	if update.Message != nil {
+		ep.handleMessage(update)
+	} else if update.CallbackQuery != nil {
+		ep.handleCallbackQuery(update)
+	}
+}
+
+// handleMessage - обработка сообщений
+func (ep *EventProcessor) handleMessage(update tgbotapi.Update) {
+	// Здесь обработка команд типа /start, /snupload_schedule и т.д.
+	switch update.Message.Text {
+	case "/start":
+		ep.sendWelcomeMessage(update)
+	case "/snupload_schedule":
+		ep.handleScheduleUpload(update)
+	default:
+		ep.sendUnknownCommand(update)
+	}
+}
+
+// handleCallbackQuery - обработка нажатий кнопок
+func (ep *EventProcessor) handleCallbackQuery(update tgbotapi.Update) {
+	callbackData := update.CallbackQuery.Data
+	// В зависимости от callbackData обработаем действие
+	switch callbackData {
+	case "back_to_course":
+		ep.state["course"] = ""
+		ep.state["group"] = ""
+		ep.state["day"] = ""
+		ep.sendMessage(update.CallbackQuery.Message.Chat.ID, "Выберите курс:")
+	default:
+		// Дополнительная обработка для других кнопок
+		ep.processButtonAction(callbackData, update)
+	}
+}
+
+// sendMessage - отправка стандартного сообщения
+func (ep *EventProcessor) sendMessage(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	ep.bot.Send(msg)
+}
+
+// sendWelcomeMessage - приветственное сообщение при запуске
+func (ep *EventProcessor) sendWelcomeMessage(update tgbotapi.Update) {
+	welcomeText := fmt.Sprintf("Привет, %s! Добро пожаловать в Schedule Bot.", update.Message.From.FirstName)
+	ep.sendMessage(update.Message.Chat.ID, welcomeText)
+}
+
+// handleScheduleUpload - пример обработчика для загрузки расписания
+func (ep *EventProcessor) handleScheduleUpload(update tgbotapi.Update) {
+	// Логика загрузки расписания
+	if update.Message.From.ID == ep.ownerID {
+		ep.sendMessage(update.Message.Chat.ID, "Загрузка расписания началась...")
+	} else {
+		ep.sendMessage(update.Message.Chat.ID, "У вас нет прав для загрузки расписания.")
+	}
+}
+
+// sendUnknownCommand - обработка неизвестных команд
+func (ep *EventProcessor) sendUnknownCommand(update tgbotapi.Update) {
+	ep.sendMessage(update.Message.Chat.ID, "Неизвестная команда. Попробуйте снова.")
+}
+
+func main() {
+	// Инициализация бота
+	token := "your-bot-token"
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Authorized as %s", bot.Self.UserName)
+
+	// Инициализация EventProcessor
+	ownerID := int64(5266257091)
+	eventProcessor := NewEventProcessor(bot, ownerID)
+
+	// Получение обновлений
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates, err := bot.GetUpdatesChan(u)
+	if err != nil {
+		log.Fatalf("Error getting updates: %v", err)
+	}
+
+	// Обработка обновлений
+	for update := range updates {
+		eventProcessor.ProcessUpdate(update)
+	}
+}

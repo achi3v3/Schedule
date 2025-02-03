@@ -10,7 +10,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func NewBot() {
+func 	NewBot() {
 	launchNewBot()
 }
 
@@ -19,7 +19,7 @@ func launchNewBot() {
 
 	token := BotToken()
 
-	fmt.Println(token)
+	fmt.Println("▶️ ", token)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -32,9 +32,5 @@ func launchNewBot() {
 		panic(err)
 	}
 	b.RegisterHandlerMatchFunc(isStart, Start)
-	b.RegisterHandlerMatchFunc(isSnStartSchedule, snStartSchedule)
-	b.RegisterHandlerMatchFunc(isUploadFile, snUploadFile)
-	b.RegisterHandlerMatchFunc(isMyGroup, snMyGroup)
-	b.RegisterHandlerMatchFunc(isUnPin, snUnPinGroup)
 	b.Start(ctx)
 }

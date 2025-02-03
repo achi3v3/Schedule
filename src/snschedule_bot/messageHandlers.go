@@ -14,7 +14,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func editMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, keyboard *models.InlineKeyboardMarkup) {
+func editMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, keyboard *models.InlineKeyboardMarkup) error {
 	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:      chatID,
 		MessageID:   messageID,
@@ -23,8 +23,9 @@ func editMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, t
 		ParseMode:   models.ParseModeHTML,
 	})
 	if err != nil {
-		log.Printf("Ошибка изменения сообщения: %v", err)
+		return err
 	}
+	return nil
 }
 func handleDocument(ctx context.Context, b *bot.Bot, update *models.Update) {
 	connStr := "user=postgres password=password sslmode=disable"

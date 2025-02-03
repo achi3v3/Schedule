@@ -1,6 +1,10 @@
 package functions
 
-import "sync"
+import (
+	"errors"
+	"strconv"
+	"sync"
+)
 
 // ========================================================USER_STATES===========================================================================
 type UserState struct {
@@ -67,3 +71,46 @@ func getUserMessageID(chatID int64) (int, bool) {
 	messageID, exists := userMessages.data[chatID]
 	return messageID, exists
 }
+func deleteUserMessageID(chatID int64) {
+	userMessages.Lock()
+	defer userMessages.Unlock()
+	delete(userMessages.data, chatID)
+}
+
+var userMessagesText = struct {
+	sync.RWMutex
+	data         map[int64]int // chatID -> messageID
+	ownerMessage struct {
+		text   string // Хранение текста сообщения (содержит ID пользователя)
+		exists bool
+	}
+}{data: make(map[int64]int)}
+
+func setOwnerMessageText(messageText string) {
+	userMessagesText.Lock()
+	defer userMessagesText.Unlock()
+	userMessagesText.ownerMessage.text = messageText
+	userMessagesText.ownerMessage.exists = true
+}
+
+func extractUserIDFromMessage() (int64, error) {
+	userMessagesText.RLock()
+	defer userMessagesText.RUnlock()
+
+	if !userMessagesText.ownerMessage.exists {
+		return 0, errors.New("сообщение не найдено")
+	}
+
+	userID, err := strconv.ParseInt(userMessagesText.ownerMessage.text, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return userID, nil
+}
+
+// func getOwnerMessageText() (string, bool) {
+// 	userMessagesText.RLock()
+// 	defer userMessagesText.RUnlock()
+// 	return userMessagesText.ownerMessage.text, userMessagesText.ownerMessage.exists
+// }
