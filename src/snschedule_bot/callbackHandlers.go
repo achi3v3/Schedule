@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	up   = "🔝"
-	down = "🔻"
+	UpArrow   = "🔝"
+	DownArrow = "🔻"
 )
 
+// Универсальный обработчик для всех типов сообщений // РАЗДЕЛИТЬ НА НЕСКОЛЬКО ФУНКЦИЙ
 func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 	if update == nil {
@@ -158,7 +159,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 				fmt.Println("error", callbackData)
 			} else {
 				addRedactor(ctx, setredactorID)
-				sendNotifyRole(ctx, b, userID, setredactorID, up, "«Редактор»")
+				sendNotifyRole(ctx, b, userID, setredactorID, UpArrow, "«Редактор»")
 				sendAddRole(ctx, b, setredactorID, "Редактор")
 			}
 			sendUpdatePermisions(ctx, b, chatID, setredactorID)
@@ -173,7 +174,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 				fmt.Println("error", callbackData)
 			} else {
 				deleteRedactor(ctx, setredactorID)
-				sendNotifyRole(ctx, b, userID, setredactorID, down, "«Редактор»")
+				sendNotifyRole(ctx, b, userID, setredactorID, DownArrow, "«Редактор»")
 				sendDeleteRole(ctx, b, setredactorID, "Редактор")
 			}
 			sendUpdatePermisions(ctx, b, chatID, setredactorID)
@@ -188,7 +189,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 				fmt.Println("error", callbackData)
 			} else {
 				setRoleAdmin(ctx, setredactorID, true)
-				sendNotifyRole(ctx, b, userID, setredactorID, up, "«Администратор»")
+				sendNotifyRole(ctx, b, userID, setredactorID, UpArrow, "«Администратор»")
 				sendAddRole(ctx, b, setredactorID, "Администратор")
 			}
 			sendUpdatePermisions(ctx, b, chatID, setredactorID)
@@ -211,7 +212,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 				fmt.Println("error", callbackData)
 			} else {
 				setRoleAdmin(ctx, setredactorID, false)
-				sendNotifyRole(ctx, b, userID, setredactorID, down, "«Администратор»")
+				sendNotifyRole(ctx, b, userID, setredactorID, DownArrow, "«Администратор»")
 				sendDeleteRole(ctx, b, setredactorID, "Администратор")
 			}
 			sendUpdatePermisions(ctx, b, chatID, setredactorID)
@@ -220,7 +221,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			if err != nil {
 				fmt.Println("error", callbackData)
 			} else {
-				sendNotifyRole(ctx, b, userID, setredactorID, down, "«Администратор»")
+				sendNotifyRole(ctx, b, userID, setredactorID, DownArrow, "«Администратор»")
 				sendNotPermisions(ctx, b, chatID)
 			}
 		}
@@ -234,12 +235,12 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			deleteUserState(chatID, "group")
 			sendGroupSelection(ctx, b, chatID, state)
 		} else if state["course"] != "" {
-			sendCourseSelection(ctx, b, chatID)
+			sendCourseSelection(ctx, b, chatID, true)
 		}
 		return
 
 	} else if callbackData == "Расписание" {
-		sendCourseSelection(ctx, b, chatID)
+		sendCourseSelection(ctx, b, chatID, true)
 		return
 	} else if callbackData == "Моя группа" {
 		course, group, err := GetUserCourseAndGroup(ctx, chatID)
@@ -483,7 +484,8 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		} else {
 			msg := "💢 Пожалуйста, выберите курс и группу перед закреплением."
 			sendOnlyMessage(ctx, b, chatID, msg)
-			sendCourseSelectionWitoutEdit(ctx, b, chatID)
+			// Без редактирования
+			sendCourseSelection(ctx, b, chatID, false)
 		}
 		return
 	} else if callbackData == "Добавить" {
@@ -521,8 +523,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			sendNotPermisions(ctx, b, chatID)
 		}
 		return
-	}
-	if state["course"] == "" && state["group"] == "" && state["day"] == "" {
+	} else if state["course"] == "" && state["group"] == "" && state["day"] == "" {
 		setUserState(chatID, "course", callbackData)
 		sendGroupSelection(ctx, b, chatID, state)
 		return
@@ -537,6 +538,7 @@ func UniversalHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		return
 	}
 }
+
 func databaseHandler() {
 	// =============================================POSTGRESQL==============================================
 	connStr := "user=postgres password=password sslmode=disable"
