@@ -965,7 +965,7 @@ func sortCouplesByTime(couples []Couple) []Couple {
 
 	return couples
 } // Функция для сортировки слайса Couple по времени
-func getGroupsByCourseRu(courseName string) ([]string, error) {
+func GetGroupsByCourseRu(courseName string) ([]string, error) {
 	db, err := Connect(postgres)
 	if err != nil {
 		log.Println("getGroupsByCourseRu:", err)
@@ -1114,7 +1114,7 @@ func getExcelName() ([]string, error) {
 
 	return dataFiles, nil
 }
-func getAllSheets() ([]string, error) {
+func GetAllSheets() ([]string, error) {
 	db, err := Connect(postgres)
 	if err != nil {
 		log.Println("getAllSheets:", err)
