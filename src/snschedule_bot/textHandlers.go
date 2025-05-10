@@ -43,6 +43,7 @@ func isValidFormat(s string) bool {
 	re := regexp.MustCompile(`^[\wа-яА-ЯёЁ-]+(?:-[\wа-яА-ЯёЁ-]+)+$`)
 	return re.MatchString(s)
 }
+
 func replaceCyrillicWithLatin(input string) string {
 	translitMap := map[rune]string{
 		'А': "A", 'Б': "B", 'В': "V", 'Г': "G", 'Д': "D", 'Е': "E", 'Ё': "E", 'Ж': "ZH", 'З': "Z", 'И': "I",
