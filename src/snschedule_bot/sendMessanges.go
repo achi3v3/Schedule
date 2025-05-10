@@ -3,6 +3,7 @@ package functions
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,21 @@ import (
 )
 
 const (
+	// Common message parts
+	botHeader = "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)"
+	weekInfo  = "📆 Установленная неделя: %s"
+
+	// Course and group info
+	courseInfo = "\n\nУровень обучения: %s"
+	groupInfo  = "\nГруппа: %s"
+
+	// Page info
+	pageInfo = "\n\n<i>Лист %d:</i>"
+
+	// Common buttons
+	backButton = "Назад"
+
+	// Page sizes
 	pageSize        = 8
 	pageSizeNotices = 3
 )
@@ -47,146 +63,69 @@ func isSpamming(userID int64) bool {
 	userLastAction.data[userID] = now
 	return false
 }
-func sendCourseSelectionWitoutEdit(ctx context.Context, b *bot.Bot, chatID int64) {
+func sendCourseSelection(ctx context.Context, b *bot.Bot, chatID int64, edit bool) {
 	resetUserState(chatID)
-	courses, _ := getAllSheets()
+	msg := fmt.Sprintf("%s\n%s\n\nВыберите уровень обучения:", botHeader, fmt.Sprintf(weekInfo, getWeek()))
 
-	var keyboardRows [][]models.InlineKeyboardButton
-	row := []models.InlineKeyboardButton{}
-	for i, course := range courses {
-		if course == "Расписание" {
-			continue
+	if edit {
+		sendEditMessage(ctx, b, chatID, msg, CourseSelection())
+	} else {
+		sentMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:      chatID,
+			Text:        msg,
+			ReplyMarkup: CourseSelection(),
+			ParseMode:   models.ParseModeHTML,
+		})
+		if err != nil {
+			fmt.Printf("%s %v", errorSendMsg, err)
 		}
-		row = append(row, models.InlineKeyboardButton{Text: (course), CallbackData: course})
-		if (i)%3 == 0 || course == "Расписание" || course == "4 курс" {
-			keyboardRows = append(keyboardRows, row)
-			row = []models.InlineKeyboardButton{}
-		}
+		setUserMessageID(chatID, sentMsg.ID)
 	}
-	if len(row) > 0 {
-		keyboardRows = append(keyboardRows, row)
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "home"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	msgText := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nВыберите уровень обучения:", getWeek())
-
-	sentMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      chatID,
-		Text:        msgText,
-		ReplyMarkup: keyboard,
-		ParseMode:   models.ParseModeHTML,
-	})
-	if err != nil {
-		fmt.Printf("%s %v", errorSendMsg, err)
-	}
-	setUserMessageID(chatID, sentMsg.ID)
 }
-func sendCourseSelection(ctx context.Context, b *bot.Bot, chatID int64) {
-	resetUserState(chatID)
-	courses, _ := getAllSheets()
 
-	var keyboardRows [][]models.InlineKeyboardButton
-	row := []models.InlineKeyboardButton{}
-	for i, course := range courses {
-		if course == "Расписание" {
-			continue
-		}
-		row = append(row, models.InlineKeyboardButton{Text: (course), CallbackData: course})
-		if (i)%3 == 0 || course == "Расписание" || course == "4 курс" {
-			keyboardRows = append(keyboardRows, row)
-			row = []models.InlineKeyboardButton{}
-		}
-	}
-	if len(row) > 0 {
-		keyboardRows = append(keyboardRows, row)
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "home"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nВыберите уровень обучения:", getWeek())
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
-}
 func sendSchedule(ctx context.Context, b *bot.Bot, chatID int64, schedule string, state map[string]string) {
-
-	var keyboardRows [][]models.InlineKeyboardButton
-
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "✏️ Добавить", CallbackData: "Добавить"},
-	})
 	prevday, nextday := getAdjacentDays(state["day"])
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: prevday, CallbackData: prevday},
-		{Text: "Назад", CallbackData: "back"},
-		{Text: nextday, CallbackData: nextday},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	sendEditMessage(ctx, b, chatID, schedule, keyboard)
+	sendEditMessage(ctx, b, chatID, schedule, ScheduleKeyboard(prevday, nextday))
 }
 func sendGroupSelection(ctx context.Context, b *bot.Bot, chatID int64, state map[string]string) {
-	groups, _ := getGroupsByCourseRu(state["course"])
-	var keyboardRows [][]models.InlineKeyboardButton
-	row := []models.InlineKeyboardButton{}
-	for i, group := range groups {
-		row = append(row, models.InlineKeyboardButton{Text: group, CallbackData: group})
-
-		if (i+1)%3 == 0 || i == len(group)-1 {
-			keyboardRows = append(keyboardRows, row)
-			row = []models.InlineKeyboardButton{}
-		}
-	}
-	if len(row) > 0 {
-		keyboardRows = append(keyboardRows, row)
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "back"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nВыберите группу:", getWeek(), state["course"])
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n%s\n\nУровень обучения: %s\nВыберите группу:",
+		botHeader,
+		fmt.Sprintf(weekInfo, getWeek()),
+		state["course"])
+	sendEditMessage(ctx, b, chatID, msg, GroupSelection(state["course"]))
 }
 func sendDaySelection(ctx context.Context, b *bot.Bot, chatID int64, state map[string]string) {
-	days := []string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"}
-	var keyboardRows [][]models.InlineKeyboardButton
-	row := []models.InlineKeyboardButton{}
-	for i, day := range days {
-		row = append(row, models.InlineKeyboardButton{Text: day, CallbackData: day})
-
-		if (i+1)%3 == 0 || i == len(days)-1 {
-			keyboardRows = append(keyboardRows, row)
-			row = []models.InlineKeyboardButton{}
-		}
-	}
-	if len(row) > 0 {
-		keyboardRows = append(keyboardRows, row)
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "📌 Закрепить группу", CallbackData: "Закрепить группу"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "back"},
-	})
-
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nГруппа: %s\nВыберите день:", getWeek(), state["course"], state["group"])
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n%s\n\nУровень обучения: %s\nГруппа: %s\nВыберите день:",
+		botHeader,
+		fmt.Sprintf(weekInfo, getWeek()),
+		state["course"],
+		state["group"])
+	sendEditMessage(ctx, b, chatID, msg, DaySelection())
 }
-func getSchedule(state map[string]string) string {
 
+type Schedule struct {
+	Time    string
+	Subject string
+	Teacher string
+	Room    string
+	Weeks   string
+	Student string
+}
+
+func convertToSchedule(couple []string) Schedule {
+	schedule := Schedule{
+		Time:    couple[1],
+		Subject: couple[2],
+		Room:    couple[3],
+		Teacher: couple[4],
+		Weeks:   couple[5],
+	}
+	if len(couple) > 6 {
+		schedule.Student = couple[6]
+	}
+	return schedule
+}
+func (s Schedule) getPairNumber() string {
 	allrangetime := []string{
 		"08.00-09.20",
 		"09.35-10.55",
@@ -199,69 +138,74 @@ func getSchedule(state map[string]string) string {
 		"19.55-21.15",
 	}
 
-	GlobalWeek := "17"
-	startcoupleString := fmt.Sprintf("🏛 Расписание <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\nУровень обучения: %s\nГруппа: %s\n\n<b>📅 %s</b>\n\n", GlobalWeek, state["course"], state["group"], state["day"])
+	if idx := findIndex(allrangetime, s.Time); idx != -1 {
+		return fmt.Sprintf("%d", idx+1)
+	}
+	return "x"
+}
+func (s Schedule) HasStudent() bool {
+	return s.Student != ""
+}
+
+func (s Schedule) FormatMessage() string {
+	if s.HasStudent() {
+		return fmt.Sprintf("<blockquote><b>%s</b> <i>(by %s)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i></blockquote>\n",
+			s.Time, s.Student, s.Subject, s.Room, s.Teacher)
+	}
+	return fmt.Sprintf("<blockquote><b>%s</b> <i>(%s пара)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i></blockquote>\n",
+		s.Time, s.getPairNumber(), s.Subject, s.Room, s.Teacher)
+}
+
+func getSchedule(state map[string]string) string {
+	startcoupleString := fmt.Sprintf("%s\n%s\n\nУровень обучения: %s\nГруппа: %s\n\n<b>%s</b>\n\n",
+		botHeader,
+		fmt.Sprintf(weekInfo, getWeek()),
+		state["course"],
+		state["group"],
+		state["day"])
+
 	coupleList := FunctionDataBaseTableData(renameSheetGroup(state["course"]), renameSheetGroup(state["group"]), state["day"])
-	coupleString, flagConcatenateAuditory, flagConcatenateTeacher := "", "", ""
+	var schedules []Schedule
+
+	// Convert raw data to Schedule structs and handle concatenation
 	for i := 0; i < len(coupleList); i++ {
-		numberCoupleTime := "x"
-		CoupleTime := coupleList[i][1]
-		if contains(allrangetime, CoupleTime) {
-			numberCoupleTime = fmt.Sprintf("%d", findIndex(allrangetime, CoupleTime)+1)
-		}
-		CoupleSubject := coupleList[i][2]
-		CoupleAuditory := coupleList[i][3]
-		CoupleTeacher := coupleList[i][4]
-		CoupleWeeks := coupleList[i][5]
-		flag_added := false
-		if len(coupleList[i]) > 6 {
-			flag_added = true
-		}
-		if flagConcatenateAuditory != "" {
-			CoupleAuditory = fmt.Sprintf("%s / %s", CoupleAuditory, flagConcatenateAuditory)
-			flagConcatenateAuditory = ""
-		}
-		if flagConcatenateTeacher != "" {
-			CoupleTeacher = fmt.Sprintf("%s / %s", CoupleTeacher, flagConcatenateTeacher)
-			flagConcatenateTeacher = ""
-		}
+		schedule := convertToSchedule(coupleList[i])
+
+		// Check if we need to concatenate with next entry
 		if i+1 < len(coupleList) {
-			if CoupleTime == coupleList[i+1][1] && CoupleSubject == coupleList[i+1][2] {
-				if CoupleTeacher == coupleList[i+1][4] && CoupleAuditory != coupleList[i+1][3] {
-					flagConcatenateAuditory = CoupleAuditory
-					continue
-				} else if CoupleTeacher != coupleList[i+1][4] && CoupleAuditory != coupleList[i+1][3] {
-					flagConcatenateAuditory = CoupleAuditory
-					flagConcatenateTeacher = CoupleTeacher
-					continue
-				} else if CoupleTeacher != coupleList[i+1][4] && CoupleAuditory == coupleList[i+1][3] {
-					flagConcatenateTeacher = CoupleTeacher
-					continue
+			nextSchedule := convertToSchedule(coupleList[i+1])
+			if schedule.Time == nextSchedule.Time && schedule.Subject == nextSchedule.Subject {
+				if schedule.Teacher == nextSchedule.Teacher && schedule.Room != nextSchedule.Room {
+					schedule.Room = fmt.Sprintf("%s / %s", schedule.Room, nextSchedule.Room)
+					i++ // Skip next entry
+				} else if schedule.Teacher != nextSchedule.Teacher && schedule.Room != nextSchedule.Room {
+					schedule.Room = fmt.Sprintf("%s / %s", schedule.Room, nextSchedule.Room)
+					schedule.Teacher = fmt.Sprintf("%s / %s", schedule.Teacher, nextSchedule.Teacher)
+					i++ // Skip next entry
+				} else if schedule.Teacher != nextSchedule.Teacher && schedule.Room == nextSchedule.Room {
+					schedule.Teacher = fmt.Sprintf("%s / %s", schedule.Teacher, nextSchedule.Teacher)
+					i++ // Skip next entry
 				}
 			}
 		}
-		if !flag_added {
-			if CoupleWeeks != "—" {
-				coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(%s пара)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i>\n    🔍 <i>%s</i></blockquote>\n", CoupleTime, numberCoupleTime, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher, removeBrackets(CoupleWeeks))
-			} else {
-				coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(%s пара)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i></blockquote>\n", CoupleTime, numberCoupleTime, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher)
-			}
-		} else {
-			CoupleStudent := coupleList[i][6]
-			if CoupleWeeks != "—" {
-				coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(by %s)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i>\n    🔍 <i>%s</i></blockquote>\n", CoupleTime, CoupleStudent, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher, removeBrackets(CoupleWeeks))
-			} else {
-				coupleString += fmt.Sprintf("<blockquote><b>%s</b> <i>(by %s)\n</i>    📓 <i>%s</i>\n    🗝 <i>%s</i>\n    🪪 <i>%s</i></blockquote>\n", CoupleTime, CoupleStudent, CoupleSubject, removeBrackets(CoupleAuditory), CoupleTeacher)
-			}
-		}
+
+		schedules = append(schedules, schedule)
+	}
+
+	// Format all schedules
+	var coupleString string
+	for _, schedule := range schedules {
+		coupleString += schedule.FormatMessage()
 	}
 
 	return startcoupleString + coupleString
 }
 func NoticeSendDaySelection(ctx context.Context, b *bot.Bot, chatID int64, course, group string) {
-	days := []string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"}
+
 	var keyboardRows [][]models.InlineKeyboardButton
+	days := []string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"}
 	row := []models.InlineKeyboardButton{}
+
 	for i, day := range days {
 		row = append(row, models.InlineKeyboardButton{Text: day, CallbackData: day})
 
@@ -270,6 +214,7 @@ func NoticeSendDaySelection(ctx context.Context, b *bot.Bot, chatID int64, cours
 			row = []models.InlineKeyboardButton{}
 		}
 	}
+
 	if len(row) > 0 {
 		keyboardRows = append(keyboardRows, row)
 	}
@@ -278,14 +223,17 @@ func NoticeSendDaySelection(ctx context.Context, b *bot.Bot, chatID int64, cours
 		InlineKeyboard: keyboardRows,
 	}
 
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n📆 Установленная неделя: %s\n\n<b>✏️ Добавления примечания</b>\nУровень обучения: %s\nГруппа: %s\nВыберите день:", getWeek(), course, group)
+	msg := fmt.Sprintf("%s\n%s\n%s%s%s\n<b>✏️ Добавления примечания</b>\nВыберите день:", botHeader, getWeek(), courseInfo, groupInfo, weekInfo)
+
 	sendEditMessage(ctx, b, chatID, msg, keyboard)
 }
+
 func sendFile(b *bot.Bot, chatID int64, folderPath, fileName string) error {
 	filePath := filepath.Join(folderPath, fileName)
 
 	file, err := os.Open(filePath)
 	if err != nil {
+		logError(err, "sendFile: открытие файла")
 		return fmt.Errorf("не удалось открыть файл %s: %w", filePath, err)
 	}
 	defer file.Close()
@@ -301,65 +249,20 @@ func sendFile(b *bot.Bot, chatID int64, folderPath, fileName string) error {
 		Caption: "📂 Эксель-файл расписания",
 	})
 	if err != nil {
+		logError(err, "sendFile: отправка документа")
 		return fmt.Errorf("%w", err)
 	}
 
-	fmt.Println("Файл успешно отправлен!")
 	return nil
 }
-func sendStart(ctx context.Context, b *bot.Bot, chatID int64) {
 
-	var keyboardRows [][]models.InlineKeyboardButton
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "🎓 Расписание", CallbackData: "Расписание"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "🔒 Моя группа", CallbackData: "Моя группа"},
-		{Text: "🔓 Открепить группу", CallbackData: "Открепить группу"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "🪪 Панель редактора", CallbackData: "Уполномоченным"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "📂 Эксель-файл", CallbackData: "Отправить файл"},
-		{Text: "📃 Информация", CallbackData: "Информация"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "⚙️ Панель управления", CallbackData: "Панель управления"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "🧾 Поддержка", URL: "https://t.me/sn_mira"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n📜 Главное меню"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+func sendStart(ctx context.Context, b *bot.Bot, chatID int64) {
+	msg := fmt.Sprintf("%s\n\n📜 Главное меню", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, StartKeyboard())
 }
 func sendControPanel(ctx context.Context, b *bot.Bot, chatID int64) {
-	var keyboardRows [][]models.InlineKeyboardButton
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Пользователи", CallbackData: "Пользователи"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Редакторы", CallbackData: "Редакторы"},
-		{Text: "Администраторы", CallbackData: "Администраторы"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Загрузить расписание", CallbackData: "Загрузить расписание"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Информационный лист", CallbackData: "Информационный лист"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "home"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>📇 Панель управления</b>\n"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n\n<b>📇 Панель управления</b>\n", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, ControlPanelKeyboard())
 }
 func sendNotPermisions(ctx context.Context, b *bot.Bot, chatID int64) {
 	b.SendMessage(ctx, &bot.SendMessageParams{
@@ -374,31 +277,16 @@ func sendError(ctx context.Context, b *bot.Bot, chatID int64) {
 	})
 }
 func sendRedactorPanel(ctx context.Context, b *bot.Bot, chatID int64) {
-	var keyboardRows [][]models.InlineKeyboardButton
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Мои записи", CallbackData: "Мои записи"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "home"},
-	})
-
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n📝 <b>Панель редактора</b>\n\n"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n\n📝 <b>Панель редактора</b>\n\n", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, RedactorPanelKeyboard())
 }
 func sendMyNotices(ctx context.Context, b *bot.Bot, chatID, userID int64, page int) {
 	course, group := getPermCourseGroupByUserID(userID)
 	notices := GetPinsByUserID(course, group, userID)
-
-	var keyboardRows [][]models.InlineKeyboardButton
 	noticesList := ""
 
 	if len(notices) != 0 {
 		totalNotices := len(notices)
-
 		start := page * pageSizeNotices
 		end := start + pageSizeNotices
 		if end > totalNotices {
@@ -407,56 +295,29 @@ func sendMyNotices(ctx context.Context, b *bot.Bot, chatID, userID int64, page i
 		if start >= totalNotices {
 			return
 		}
-		if page > 0 || end < totalNotices {
-			var navButtons []models.InlineKeyboardButton
-			if page > 0 {
-				navButtons = append(navButtons, models.InlineKeyboardButton{
-					Text: "Предыдущий", CallbackData: "Мои записи:" + strconv.Itoa(page-1),
-				})
-			}
-			if end < totalNotices {
-				navButtons = append(navButtons, models.InlineKeyboardButton{
-					Text: "Следующий", CallbackData: "Мои записи:" + strconv.Itoa(page+1),
-				})
-			}
-			if len(navButtons) > 0 {
-				keyboardRows = append(keyboardRows, navButtons)
-			}
-		}
 
 		for _, notice := range notices[start:end] {
 			noticesList += notice
 		}
-
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "❌ Очистить записи", CallbackData: "Очистить записи"},
-		})
-	} else {
-
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "✏️ Добавить ", CallbackData: "Группа"},
-		})
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Уполномоченным"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
 	}
 
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\nУровень обучения: %s\nГруппа: %s\n\n📝 <b>Ваши записи (%d)</b>\n\n<i>Лист %d:</i>\n%s", course, group, userID, page+1, noticesList)
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n\nУровень обучения: %s\nГруппа: %s\n\n📝 <b>Ваши записи (%d)</b>%s\n%s",
+		botHeader,
+		course,
+		group,
+		userID,
+		fmt.Sprintf(pageInfo, page+1),
+		noticesList)
+	sendEditMessage(ctx, b, chatID, msg, NoticesKeyboard(page, len(notices), true))
 }
 func sendNoticesByUserID(ctx context.Context, b *bot.Bot, chatID, userID int64, page int) {
+
 	course, group := getPermCourseGroupByUserID(userID)
 	notices := GetPinsByUserID(course, group, userID)
-
-	var keyboardRows [][]models.InlineKeyboardButton
 	noticesList := ""
 
 	if len(notices) != 0 {
 		totalNotices := len(notices)
-
 		start := page * pageSizeNotices
 		end := start + pageSizeNotices
 		if end > totalNotices {
@@ -466,39 +327,18 @@ func sendNoticesByUserID(ctx context.Context, b *bot.Bot, chatID, userID int64, 
 			return
 		}
 
-		if page > 0 || end < totalNotices {
-			var navButtons []models.InlineKeyboardButton
-			if page > 0 {
-				navButtons = append(navButtons, models.InlineKeyboardButton{
-					Text: "Предыдущий", CallbackData: "Просмотреть записи:" + strconv.Itoa(page-1),
-				})
-			}
-			if end < totalNotices {
-				navButtons = append(navButtons, models.InlineKeyboardButton{
-					Text: "Следующий", CallbackData: "Просмотреть записи:" + strconv.Itoa(page+1),
-				})
-			}
-			if len(navButtons) > 0 {
-				keyboardRows = append(keyboardRows, navButtons)
-			}
-		}
 		for _, notice := range notices[start:end] {
 			noticesList += notice
 		}
-
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "❌ Очистить записи", CallbackData: "Очистить записи пользователя"},
-		})
-	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Просмотр пользователя"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
 	}
 
-	msg := fmt.Sprintf("<b>🔰 Управление пользователем</b> %d\n\nУровень обучения: %s\nГруппа: %s\n\n📝 <b>Записи пользователя</b>\n\n<i>Лист %d:</i>\n%s", userID, course, group, page+1, noticesList)
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("<b>🔰 Управление пользователем</b> %d\n\nУровень обучения: %s\nГруппа: %s\n\n📝 <b>Записи пользователя</b>%s\n%s",
+		userID,
+		course,
+		group,
+		fmt.Sprintf(pageInfo, page+1),
+		noticesList)
+	sendEditMessage(ctx, b, chatID, msg, NoticesKeyboard(page, len(notices), false))
 }
 func sendGetRedactors(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 	redactors := GetRedactorsByUserID()
@@ -531,7 +371,7 @@ func sendGetRedactors(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 		}
 	}
 	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
+		{Text: backButton, CallbackData: "Панель управления"},
 	})
 	keyboard := &models.InlineKeyboardMarkup{
 		InlineKeyboard: keyboardRows,
@@ -542,7 +382,7 @@ func sendGetRedactors(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 		userList += user
 	}
 
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n📝 <b>Редакторы</b>\n\n<i>Лист %d:</i>\n%s", page+1, userList)
+	msg := fmt.Sprintf("%s\n\n📝 <b>Редакторы</b>\n%s", botHeader, userList)
 	sendEditMessage(ctx, b, chatID, msg, keyboard)
 }
 func sendGetAdmins(ctx context.Context, b *bot.Bot, chatID int64, page int) {
@@ -576,7 +416,7 @@ func sendGetAdmins(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 		}
 	}
 	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
+		{Text: backButton, CallbackData: "Панель управления"},
 	})
 	keyboard := &models.InlineKeyboardMarkup{
 		InlineKeyboard: keyboardRows,
@@ -586,7 +426,7 @@ func sendGetAdmins(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 	for _, user := range admins[start:end] {
 		userList += user
 	}
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n🎫  <b>Администраторы</b>\n\n<i>Лист %d:</i>\n%s", page+1, userList)
+	msg := fmt.Sprintf("%s\n\n🎫  <b>Администраторы</b>\n%s", botHeader, userList)
 	sendEditMessage(ctx, b, chatID, msg, keyboard)
 }
 func sendUsers(ctx context.Context, b *bot.Bot, chatID int64, page int) {
@@ -620,7 +460,7 @@ func sendUsers(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 		}
 	}
 	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
+		{Text: backButton, CallbackData: "Панель управления"},
 	})
 	keyboard := &models.InlineKeyboardMarkup{
 		InlineKeyboard: keyboardRows,
@@ -630,117 +470,75 @@ func sendUsers(ctx context.Context, b *bot.Bot, chatID int64, page int) {
 	for _, user := range users[start:end] {
 		userList += user
 	}
-	msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<i>✏️ — Редактор\n🎫 — Администратор</i>\n\n📝 <b>Список пользователей</b>\n\n<i>Лист %d:</i>\n%s", page+1, userList)
+	msg := fmt.Sprintf("%s\n\n<i>✏️ — Редактор\n🎫 — Администратор</i>\n\n📝 <b>Список пользователей</b>\n%s", botHeader, userList)
 	sendEditMessage(ctx, b, chatID, msg, keyboard)
 }
 func sendUploadFile(ctx context.Context, b *bot.Bot, chatID int64) {
-	var keyboardRows [][]models.InlineKeyboardButton
-
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n✳️ Загрузка расписания\n<blockquote>Файл: <i>File.xlsx</i></blockquote>\n<blockquote>Неделя: <i>17</i></blockquote>"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
-
+	msg := fmt.Sprintf("%s\n\n✳️ Загрузка расписания\n<blockquote>Файл: <i>File.xlsx</i></blockquote>\n<blockquote>Неделя: <i>17</i></blockquote>", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, BackKeyboard("Панель управления"))
 }
 func sendInfo(ctx context.Context, b *bot.Bot, chatID int64) {
-	var keyboardRows [][]models.InlineKeyboardButton
-
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "home"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n📃 <b>Информационный лист</b>\n\n<blockquote><i>    Бот для поиска расписания, основан на считывании информации с Excel-файла.</i>\n\n    <b>🪪 Панель редактора</b> — <u>Панель доступна пользователям, которым назначили доступ для добавления записей в расписание</u> <i>(если в вашей группе нет такого пользователя и вы хотите стать им или назначить человека, напишите в поддержку)</i>.\n\n    <b>📂 Эксель-файл</b> — Отправляется эксель-файл, с которого были считаны неделя и данное расписание.\n\n    <b>⚙️ Панель управления</b> — <u>Панель доступна пользователям, с правами администратора</u>.\n\n    <b>🧾 Поддержка</b> — В поддержку можно обратиться по любым вопросам, относящимся к данному боту.</blockquote>"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+	msg := fmt.Sprintf("%s\n\n📃 <b>Информационный лист</b>\n\n<blockquote><i>    Бот для поиска расписания, основан на считывании информации с Excel-файла.</i>\n\n    <b>🪪 Панель редактора</b> — <u>Панель доступна пользователям, которым назначили доступ для добавления записей в расписание</u> <i>(если в вашей группе нет такого пользователя и вы хотите стать им или назначить человека, напишите в поддержку)</i>.\n\n    <b>📂 Эксель-файл</b> — Отправляется эксель-файл, с которого были считаны неделя и данное расписание.\n\n    <b>⚙️ Панель управления</b> — <u>Панель доступна пользователям, с правами администратора</u>.\n\n    <b>🧾 Поддержка</b> — В поддержку можно обратиться по любым вопросам, относящимся к данному боту.</blockquote>", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, BackKeyboard("home"))
 }
 func sendUpdatePermisions(ctx context.Context, b *bot.Bot, chatID, userID int64) {
 	course, group := CourseGroupByUserID(userID)
-	var (
-		keyboardRows [][]models.InlineKeyboardButton
-		roles        string
-	)
-	if !IsRedactorsByUserID(userID) {
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "Сделать редактором", CallbackData: "Сделать редактором"},
-		})
-	} else {
+	var roles string
+
+	if IsRedactorsByUserID(userID) {
 		roles += "Редактор"
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "Убрать редактора", CallbackData: "Убрать редактора"},
-		})
 	}
-	if !IsAdminByUserID(userID) {
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "Назначить админом", CallbackData: "Сделать админом"},
-		})
-	} else {
+	if IsAdminByUserID(userID) {
 		if roles != "" {
 			roles += " / Администратор"
 		} else {
 			roles += "Администратор"
 		}
-		keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-			{Text: "Убрать админку", CallbackData: "Убрать админку"},
-		})
 	}
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Просмотреть записи", CallbackData: "Просмотреть записи"},
-	})
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	msg := fmt.Sprintf("<b>🔰 Управление пользователем</b> %d\n\nУровень обучения: %s\nГруппа: %s\nРоли: %s\n", userID, course, group, roles)
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+
+	msg := fmt.Sprintf("<b>🔰 Управление пользователем</b> %d\n\nУровень обучения: %s\nГруппа: %s\nРоли: %s\n",
+		userID,
+		course,
+		group,
+		roles)
+	sendEditMessage(ctx, b, chatID, msg, UserPermissionsKeyboard(IsRedactorsByUserID(userID), IsAdminByUserID(userID)))
 }
 func sendRequestForSetRoleAdmin(ctx context.Context, b *bot.Bot, chatID, WhoID, userID int64) {
-	msgUser := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote><i>Вы предложили назначение роли «Администратор» пользователю %d</i></blockquote>", userID)
+	msgUser := fmt.Sprintf("%s\n\n<b>Уведомление</b>\n\n<blockquote><i>Вы предложили назначение роли «Администратор» пользователю %d</i></blockquote>", botHeader, userID)
 	sendOnlyMessage(ctx, b, chatID, msgUser)
-	msgOwner := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote>Администратор %d просит о назначении роли «Администратор» для %d</blockquote>", WhoID, userID)
+	msgOwner := fmt.Sprintf("%s\n\n<b>Уведомление</b>\n\n<blockquote>Администратор %d просит о назначении роли «Администратор» для %d</blockquote>", botHeader, WhoID, userID)
 	sendOnlyMessage(ctx, b, idOwner, msgOwner)
 }
+
 func sendAddRole(ctx context.Context, b *bot.Bot, userID int64, role string) {
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    userID,
-		Text:      fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote>Вам назначили роль «<i>%s</i>»</blockquote>", role),
+		Text:      fmt.Sprintf("%s\n\n<b>Уведомление</b>\n\n<blockquote>Вам назначили роль «<i>%s</i>»</blockquote>", botHeader, role),
 		ParseMode: models.ParseModeHTML,
 	})
 	if err != nil {
-		msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote>До пользователя %d не дошло сообщение о назначении роли администратора</blockquote>", userID)
+		logError(err, "sendAddRole: отправка уведомления")
+		msg := fmt.Sprintf("\n\n<b>Уведомление</b>\n\n<blockquote>До пользователя %d не дошло сообщение о назначении роли администратора</blockquote>", userID)
 		sendOnlyMessage(ctx, b, idOwner, msg)
 	}
 }
+
 func sendDeleteRole(ctx context.Context, b *bot.Bot, userID int64, role string) {
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    userID,
-		Text:      fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote>У вас отобрали роль «<i>%s</i>»</blockquote>", role),
+		Text:      fmt.Sprintf("%s\n\n<b>Уведомление</b>\n\n<blockquote>У вас отобрали роль «<i>%s</i>»</blockquote>", botHeader, role),
 		ParseMode: models.ParseModeHTML,
 	})
 	if err != nil {
-		msg := fmt.Sprintf("🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n<b>Уведомление</b>\n\n<blockquote>До пользователя %d не дошло сообщение о назначении роли администратора</blockquote>", userID)
+		logError(err, "sendDeleteRole: отправка уведомления")
+		msg := fmt.Sprintf("\n\n<b>Уведомление</b>\n\n<blockquote>До пользователя %d не дошло сообщение о назначении роли администратора</blockquote>", userID)
 		sendOnlyMessage(ctx, b, idOwner, msg)
 	}
 }
-func sendAdminInfo(ctx context.Context, b *bot.Bot, chatID int64) {
-	var keyboardRows [][]models.InlineKeyboardButton
 
-	keyboardRows = append(keyboardRows, []models.InlineKeyboardButton{
-		{Text: "Назад", CallbackData: "Панель управления"},
-	})
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboardRows,
-	}
-	msg := "🏛 <a href=\"https://t.me/sn_schedulebot\">Schedule Bot</a> — Расписание (⚙️ Бета-версия)\n\n📃 <b>Администраторский информационный лист</b>\n\n<blockquote>ℹ️ Для управления пользователем введите в бота id-пользователя <i>(id можно взять в скобках в списке пользователей)</i>\n\nℹ️ «Сделать редактором» — у пользователя должна быть прикреплена группа, в которою он впоследствии сможет вносить записи.\n\nℹ️ «Назначить администратором» — отправляется запрос о назначении роли «Администратор».\n\nℹ️ «Убрать админку» — может только основной администратор\n\nℹ️ «Загрузить расписание» — может только уполномоченный пользователь.</blockquote>"
-	sendEditMessage(ctx, b, chatID, msg, keyboard)
+func sendAdminInfo(ctx context.Context, b *bot.Bot, chatID int64) {
+	msg := fmt.Sprintf("%s\n\n📃 <b>Администраторский информационный лист</b>\n\n<blockquote>ℹ️ Для управления пользователем введите в бота id-пользователя <i>(id можно взять в скобках в списке пользователей)</i>\n\nℹ️ «Сделать редактором» — у пользователя должна быть прикреплена группа, в которою он впоследствии сможет вносить записи.\n\nℹ️ «Назначить администратором» — отправляется запрос о назначении роли «Администратор».\n\nℹ️ «Убрать админку» — может только основной администратор\n\nℹ️ «Загрузить расписание» — может только уполномоченный пользователь.</blockquote>", botHeader)
+	sendEditMessage(ctx, b, chatID, msg, BackKeyboard("Панель управления"))
 }
 
 func sendEditMessage(ctx context.Context, b *bot.Bot, chatID int64, msg string, keyboard *models.InlineKeyboardMarkup) {
@@ -754,10 +552,9 @@ func sendEditMessage(ctx context.Context, b *bot.Bot, chatID int64, msg string, 
 			ParseMode:   models.ParseModeHTML,
 		})
 		if err != nil {
-			fmt.Printf("%s %v", errorSendMsg, err)
+			logError(err, "sendEditMessage: отправка сообщения")
 		}
 		setUserMessageID(chatID, sentMsg.ID)
-
 	} else {
 		err := editMessage(ctx, b, chatID, messageID, msg, keyboard)
 		if err != nil {
@@ -768,13 +565,13 @@ func sendEditMessage(ctx context.Context, b *bot.Bot, chatID int64, msg string, 
 				ParseMode:   models.ParseModeHTML,
 			})
 			if err != nil {
-				fmt.Printf("Ошибка отправки сообщения: %v", err)
-
+				logError(err, "sendEditMessage: повторная отправка сообщения")
 			}
 			setUserMessageID(chatID, sentMsg.ID)
 		}
 	}
 }
+
 func sendOnlyMessage(ctx context.Context, b *bot.Bot, chatID int64, msg string) {
 	b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    chatID,
@@ -790,4 +587,11 @@ func sendNotifyRole(ctx context.Context, b *bot.Bot, userID, setUserID int64, sy
 		Text:      msg,
 		ParseMode: models.ParseModeHTML,
 	})
+}
+
+// Простая функция для логирования ошибок
+func logError(err error, context string) {
+	if err != nil {
+		log.Printf("[ERROR] %s: %v", context, err)
+	}
 }
